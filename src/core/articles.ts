@@ -65,8 +65,10 @@ export type ArticleSummary = {
   status: ArticleStatus;
   publishedAt: string;
 };
-export type TitleChange =
-  { kind: "unchanged" } | { kind: "title"; title: ArticleTitle };
+export type ArticleFieldChange =
+  | { kind: "title"; title: ArticleTitle }
+  | { kind: "body"; content: string; sourcePath: string };
+export type ArticleChanges = [ArticleFieldChange, ...ArticleFieldChange[]];
 export type ArticleUpdate = {
   id: ArticleId;
   title: string;
@@ -89,7 +91,7 @@ export interface ArticleStore {
   readForDeletion(input: { id: ArticleId }): Promise<Article>;
   edit(input: {
     id: ArticleId;
-    decide: (article: Article) => TitleChange;
+    decide: (article: Article) => ArticleChanges;
   }): Promise<ArticleUpdate>;
 }
 
@@ -124,11 +126,11 @@ export function createArticleService(store: ArticleStore) {
     },
     async update({
       id,
-      title,
+      changes,
       condition,
     }: {
       id: ArticleId;
-      title: ArticleTitle;
+      changes: ArticleChanges;
       condition: VersionCondition;
     }): Promise<ArticleUpdate> {
       return store.edit({
@@ -144,9 +146,7 @@ export function createArticleService(store: ArticleStore) {
               exitCode: 3,
             });
           }
-          return article.metadata.title === title
-            ? { kind: "unchanged" }
-            : { kind: "title", title };
+          return changes;
         },
       });
     },

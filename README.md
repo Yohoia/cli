@@ -1,6 +1,6 @@
 # Yoho CLI
 
-通过终端或本地产品管理现有博客的 Markdown、MDX 文章。当前支持列出文章、查看完整文章和修改标题。
+通过终端或本地产品管理现有博客的 Markdown、MDX 文章。当前支持列出文章、查看完整文章和修改标题、正文。
 
 ## 安装
 
@@ -22,6 +22,8 @@ yoho blog list
 yoho blog list --status draft
 yoho blog show nested/article
 yoho blog update nested/article --title '新的文章标题'
+yoho blog update nested/article --body-file ./article-body.md
+yoho blog update nested/article --title '新的文章标题' --body-file ./article-body.md
 ```
 
 从其他目录运行时，通过 `--project` 指定博客项目：
@@ -56,7 +58,7 @@ yoho blog show nested/article --json
 yoho blog update nested/article --title '新的标题' --if-match 'REVISION_FROM_SHOW' --json
 ```
 
-版本过期时返回 `ARTICLE_CONFLICT`，文件保持当前内容。并发 CLI 更新使用文章锁，将版本检查和写入放在同一次操作中。未传 `--if-match` 时，CLI 基于当前文件修改标题。
+版本过期时返回 `ARTICLE_CONFLICT`，文件保持当前内容。并发 CLI 更新使用文章锁，将版本检查和写入放在同一次操作中。未传 `--if-match` 时，CLI 基于当前文件只修改指定的标题或正文。
 
 ## 删除预览
 
@@ -82,7 +84,11 @@ yoho blog delete nested/article --dry-run --if-match 'REVISION_FROM_SHOW' --json
 
 ## 内容保护
 
-CLI 只修改 frontmatter 中的标题，保留正文、未知字段、日期、图片引用、注释和其他排版。标题去除首尾空白后必须为非空单行文本。相同标题不写文件，也不会自动更新文章更新时间。
+更新至少提供 `--title` 或 `--body-file`。标题去除首尾空白后必须为非空单行文本。正文输入路径相对于调用命令的当前目录解析，与 `--project` 无关，可以位于项目之外。输入必须是可读取的普通 UTF-8 文件；空文件清空正文，`-` 仅表示名为 `-` 的文件，不读取 stdin。不能把目标文章本身（含指向它的链接）作为正文输入。
+
+CLI 不修剪正文空白、不转换换行或图片路径、不提取正文输入中的 frontmatter，也不修改输入文件。仅修改正文时保留原 frontmatter，必要时在原本位于文件末尾的结束分隔符后加入一行分隔换行。仅修改标题时保留原正文。组合修改一次提交，任一输入无效时整个请求失败。
+
+未知字段、日期、注释和未指定内容保持原样。相同正文及规范化后相同标题不写文件，返回 `changed=false`，版本和修改时间保持不变。CLI 不自动更新文章更新时间。
 
 元数据的语义解析与现有博客使用同一套 `gray-matter` 规则。无法完整表示为 JSON 的非有限数字或循环引用会作为文章数据错误报告，避免静默丢失字段和值。
 
