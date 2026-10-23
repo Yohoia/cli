@@ -1,6 +1,6 @@
 # Yoho CLI
 
-通过终端或本地产品管理现有博客的 Markdown、MDX 文章。当前支持列出文章、查看完整文章和修改标题、正文、描述和标签。
+通过终端或本地产品管理现有博客的 Markdown、MDX 文章。当前支持创建草稿、列出文章、查看完整文章和修改标题、正文、描述和标签。
 
 ## 安装
 
@@ -35,6 +35,21 @@ yoho --project /path/to/blog blog list --json
 ```
 
 文章标识是相对于文章目录的路径，去掉 `.md` 或 `.mdx` 扩展名。修改标题保持文件名、文章标识和访问地址不变。管理列表默认包含草稿、已发布和已归档文章，文章状态不等同于网站公开可见性。
+
+## 创建草稿
+
+在已识别的博客内创建 Markdown 草稿，也可以通过 `--format mdx` 创建 MDX：
+
+```bash
+yoho blog create nested/draft --title '新的草稿' --description '' --published-at 2026-10-23
+yoho blog create nested/component --title '组件文章' --description '示例' --published-at '2026-10-23T12:00:00+08:00' --format mdx --body-file ./body.mdx --tag TypeScript --tag MDX --json
+```
+
+标题、描述和发布日期必须提供；描述允许为空。日期接受有效 ISO 日期或带时区的 ISO 时间，仅日期按 UTC 零点解释，带偏移时间转换到 UTC；无时区时间与不存在的日期会被拒绝。正文省略时为空，标签沿用更新命令的规范化规则。正文文件保持原样，读取规则与更新一致。
+
+新文章明确为 `status=draft`、`draft=true`、`language=zh`，不会自动写入 `updatedAt`。子目录可自动创建，但不会初始化博客。Markdown 与 MDX 共用文章标识；任一扩展名已占用时返回 `ARTICLE_ALREADY_EXISTS`，已有两个候选时返回 `ARTICLE_ID_AMBIGUOUS`，损坏原文也不会被覆盖。创建路径内的符号链接会被拒绝。
+
+创建返回与 `show` 一致的 `id`、`path`、`metadata`、`content` 和 `revision`。创建与更新共享文章锁，提交以完整暂存内容原子发布且不覆盖现有目标；提交前失败或取消会清理暂存和锁，允许保留新建的空父目录。
 
 ## 程序调用
 
@@ -118,4 +133,4 @@ pnpm pack --pack-destination artifacts
 YOHO_BLOG_PROJECT=/path/to/yoho-blog pnpm test
 ```
 
-兼容性测试显式使用本地内容模式，验证修改后的临时文章能被站点读取。PageHush 同步、文章新增与发布、Skill 管理及公开分发属于后续里程碑。
+兼容性测试显式使用本地内容模式，验证修改后的临时文章能被站点读取。PageHush 同步、Skill 管理及公开分发属于后续里程碑。

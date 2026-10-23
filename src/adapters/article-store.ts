@@ -1,7 +1,10 @@
 import {
   open,
+  mkdir,
+  link,
   lstat,
   readFile,
+  readlink,
   readdir,
   realpath,
   rename,
@@ -9,7 +12,15 @@ import {
   stat,
 } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { basename, dirname, isAbsolute, join, relative, sep } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { articleIdSchema } from "../core/articles.js";
 import type { Article, ArticleId, ArticleStore } from "../core/articles.js";
@@ -91,7 +102,7 @@ export function createFileArticleStore({
     return path;
   }
 
-  async function rejectLinkedDeletionPath(id: ArticleId): Promise<void> {
+  async function rejectLinkedMutationPath(id: ArticleId): Promise<void> {
     async function checkBoundary(path: string): Promise<void> {
       try {
         ensureContained(await realpath(path));
@@ -118,13 +129,18 @@ export function createFileArticleStore({
           if (systemErrorCode(error) === "ENOENT") break;
           throw error;
         }
+        if (info.isSymbolicLink()) {
+          const destination = resolve(dirname(path), await readlink(path));
+          ensureContained(destination);
+          await checkBoundary(dirname(destination));
+        }
         if (
           info.isSymbolicLink() ||
           (index < segments.length - 1 && !info.isDirectory())
         ) {
           throw new AppError({
             code: "ARTICLE_INVALID",
-            message: `删除目标不能包含符号链接或非目录父路径：${path}`,
+            message: `目标不能包含符号链接或非目录父路径：${path}`,
             exitCode: 3,
           });
         }
@@ -132,10 +148,78 @@ export function createFileArticleStore({
     }
   }
 
+  async function assertAvailable(id: ArticleId) {
+    await rejectLinkedMutationPath(id);
+    const occupied = [];
+    for (const extension of [".md", ".mdx"]) {
+      try {
+        occupied.push(await lstat(join(root, id + extension)));
+      } catch (error) {
+        if (systemErrorCode(error) !== "ENOENT") throw error;
+      }
+    }
+    if (occupied.some((info) => !info.isFile()))
+      throw new AppError({
+        code: "ARTICLE_INVALID",
+        message: `目标不是普通文章：${id}`,
+        exitCode: 3,
+      });
+    if (occupied.length > 1)
+      throw new AppError({
+        code: "ARTICLE_ID_AMBIGUOUS",
+        message: `文章标识对应多个文件：${id}`,
+        exitCode: 3,
+      });
+    if (occupied.length)
+      throw new AppError({
+        code: "ARTICLE_ALREADY_EXISTS",
+        message: `文章已存在：${id}`,
+        exitCode: 3,
+      });
+  }
+
   return {
+    async create(input) {
+      signal.throwIfAborted();
+      await assertAvailable(input.id);
+      const path = join(root, input.id + "." + input.format);
+      await mkdir(dirname(path), { recursive: true });
+      await assertAvailable(input.id);
+      const lease = await acquireArticleLock({ path, signal });
+      const temporary = join(
+        dirname(path),
+        `.${basename(path)}.yoho-${randomUUID()}.tmp`,
+      );
+      try {
+        lease.assertHeld();
+        await assertAvailable(input.id);
+        const source = `---\ntitle: ${JSON.stringify(input.title)}\ndescription: ${JSON.stringify(input.description)}\npublishedAt: ${JSON.stringify(input.publishedAt)}\nstatus: draft\ndraft: true\nlanguage: zh\ntags: ${JSON.stringify(input.tags)}\n---\n${input.content}`;
+        const parsed = parseArticleSource({ source, path });
+        const file = await open(temporary, "wx", 0o600);
+        try {
+          await file.writeFile(source, { encoding: "utf8", signal });
+          await file.sync();
+        } finally {
+          await file.close();
+        }
+        await assertAvailable(input.id);
+        lease.assertHeld();
+        try {
+          await link(temporary, path);
+        } catch (error) {
+          if (systemErrorCode(error) === "EEXIST")
+            await assertAvailable(input.id);
+          throw error;
+        }
+        return { id: input.id, path, ...parsed };
+      } finally {
+        await rm(temporary, { force: true }).catch(() => undefined);
+        await lease.release().catch(() => undefined);
+      }
+    },
     async readForDeletion({ id }) {
       signal.throwIfAborted();
-      await rejectLinkedDeletionPath(id);
+      await rejectLinkedMutationPath(id);
       const path = await resolveArticlePath(id);
       const source = await readSource(path);
       return { id, path, ...parseArticleSource({ source, path }) };
@@ -286,8 +370,20 @@ export function createFileArticleStore({
         ancestors: Set<string>,
       ): Promise<void> {
         signal.throwIfAborted();
-        const canonical = await realpath(directory);
-        ensureContained(canonical);
+        let canonical;
+        let entries;
+        try {
+          canonical = await realpath(directory);
+          ensureContained(canonical);
+          entries = await readdir(directory, { withFileTypes: true });
+        } catch (error) {
+          if (
+            /^\.yoho-lock-[a-f0-9]{64}\.lock$/.test(basename(directory)) &&
+            systemErrorCode(error) === "ENOENT"
+          )
+            return;
+          throw error;
+        }
         if (ancestors.has(canonical))
           throw new AppError({
             code: "ARTICLE_INVALID",
@@ -295,11 +391,24 @@ export function createFileArticleStore({
             exitCode: 3,
           });
         const nextAncestors = new Set([...ancestors, canonical]);
-        for (const entry of await readdir(directory, { withFileTypes: true })) {
+        for (const entry of entries) {
+          if (entry.isFile() && !/\.mdx?$/.test(entry.name)) continue;
           const logical = join(directory, entry.name);
-          const path = await realpath(logical);
-          ensureContained(path);
-          const kind = entry.isSymbolicLink() ? await stat(path) : entry;
+          let path;
+          let kind;
+          try {
+            path = await realpath(logical);
+            ensureContained(path);
+            kind = entry.isSymbolicLink() ? await stat(path) : entry;
+          } catch (error) {
+            if (
+              entry.isDirectory() &&
+              /^\.yoho-lock-[a-f0-9]{64}\.lock$/.test(entry.name) &&
+              systemErrorCode(error) === "ENOENT"
+            )
+              continue;
+            throw error;
+          }
           if (kind.isDirectory()) await walk(logical, nextAncestors);
           else if (kind.isFile() && /\.mdx?$/.test(entry.name)) {
             const source = await readSource(path);

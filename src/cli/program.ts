@@ -86,6 +86,48 @@ async function readBodyInput(path: string, signal: AbortSignal) {
     await file.close();
   }
 }
+const createOptionsSchema = optionsSchema.extend({
+  title: articleTitleSchema,
+  description: z.string(),
+  publishedAt: z.string().transform((value, ctx) => {
+    const match =
+      /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|[+-]\d{2}:\d{2}))?$/.exec(
+        value,
+      );
+    const year = Number(match?.[1]);
+    const month = Number(match?.[2]);
+    const day = Number(match?.[3]);
+    const calendar = new Date(0);
+    calendar.setUTCFullYear(year, month - 1, day);
+    calendar.setUTCHours(0, 0, 0, 0);
+    const zone = match?.[8];
+    const parsed = new Date(value);
+    if (
+      !match ||
+      calendar.getUTCFullYear() !== year ||
+      calendar.getUTCMonth() !== month - 1 ||
+      calendar.getUTCDate() !== day ||
+      (match[4] !== undefined &&
+        (Number(match[4]) > 23 ||
+          Number(match[5]) > 59 ||
+          Number(match[6]) > 59)) ||
+      (zone !== undefined &&
+        zone !== "Z" &&
+        (Number(zone.slice(1, 3)) > 23 || Number(zone.slice(4)) > 59)) ||
+      !Number.isFinite(parsed.getTime())
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        message: "发布日期必须为有效 ISO 日期或带时区时间",
+      });
+      return z.NEVER;
+    }
+    return parsed.toISOString();
+  }),
+  format: z.enum(["md", "mdx"]).default("md"),
+  bodyFile: z.string().min(1).optional(),
+  tag: articleTagsSchema.default([]),
+});
 const deleteOptionsSchema = optionsSchema.extend({
   dryRun: z.literal(true, "此阶段仅支持 --dry-run 删除预览"),
   yes: z.boolean().optional(),
@@ -94,6 +136,7 @@ const deleteOptionsSchema = optionsSchema.extend({
 export type CommandResult =
   | { kind: "list"; data: { items: ArticleSummary[] } }
   | { kind: "show"; data: Article }
+  | { kind: "create"; data: Article }
   | { kind: "delete-preview"; data: ArticleDeletionPreview }
   | { kind: "update"; data: ArticleUpdate };
 
@@ -139,6 +182,41 @@ export async function runProgram({
       const options = optionsSchema.parse(command.optsWithGlobals());
       const service = await articlesForProject(options.project);
       result = { kind: "show", data: await service.show({ id }) };
+    });
+  blog
+    .command("create")
+    .description("创建草稿文章")
+    .argument("<id>", "文章标识")
+    .requiredOption("--title <title>", "标题")
+    .requiredOption("--description <description>", "描述，允许空字符串")
+    .requiredOption("--published-at <date>", "发布日期或带时区时间")
+    .option("--format <format>", "md 或 mdx")
+    .option("--body-file <path>", "UTF-8 正文输入文件")
+    .option(
+      "--tag <tag>",
+      "标签，可重复指定",
+      (value: string, previous: string[] = []) => [...previous, value],
+    )
+    .action(async (rawId: unknown, _options: unknown, command: Command) => {
+      const id = articleIdSchema.parse(rawId);
+      const options = createOptionsSchema.parse(command.optsWithGlobals());
+      const content =
+        options.bodyFile === undefined
+          ? ""
+          : (await readBodyInput(options.bodyFile, signal)).content;
+      const service = await articlesForProject(options.project);
+      result = {
+        kind: "create",
+        data: await service.create({
+          id,
+          title: options.title,
+          description: options.description,
+          publishedAt: options.publishedAt,
+          format: options.format,
+          content,
+          tags: options.tag,
+        }),
+      };
     });
   blog
     .command("delete")

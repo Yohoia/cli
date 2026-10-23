@@ -4,7 +4,7 @@
 
 **Blocked by:** 02: 更新描述与标签。
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Spec:** [第二个里程碑规格](../spec.md)。
 

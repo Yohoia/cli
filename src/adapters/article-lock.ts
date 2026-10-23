@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { dirname, join } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { lock } from "proper-lockfile";
 import { AppError, systemErrorCode } from "../core/errors.js";
@@ -9,6 +11,11 @@ export async function acquireArticleLock({
   path: string;
   signal: AbortSignal;
 }) {
+  const stem = path.replace(/\.mdx?$/, "");
+  const lockfilePath = join(
+    dirname(stem),
+    `.yoho-lock-${createHash("sha256").update(stem).digest("hex")}.lock`,
+  );
   const deadline = Date.now() + 5_000;
   let compromised = false;
   while (true) {
@@ -16,6 +23,7 @@ export async function acquireArticleLock({
     try {
       const release = await lock(path, {
         realpath: false,
+        lockfilePath,
         stale: 10_000,
         retries: 0,
         onCompromised: () => {

@@ -90,7 +90,18 @@ export type ArticleDeletionPreview = Pick<
   deleted: false;
 };
 
+export type ArticleCreation = {
+  id: ArticleId;
+  title: ArticleTitle;
+  description: string;
+  publishedAt: string;
+  format: "md" | "mdx";
+  content: string;
+  tags: string[];
+};
+
 export interface ArticleStore {
+  create(input: ArticleCreation): Promise<Article>;
   list(): Promise<Article[]>;
   read(input: { id: ArticleId }): Promise<Article>;
   readForDeletion(input: { id: ArticleId }): Promise<Article>;
@@ -103,6 +114,7 @@ export interface ArticleStore {
 export function createArticleService(store: ArticleStore) {
   return {
     show: store.read,
+    create: store.create,
     async previewDelete({
       id,
       condition,
