@@ -19,6 +19,14 @@ yoho --help
 
 安装包包含运行依赖；安装后可从任意目录使用 `yoho`，不需要位于博客项目中。当前安装验收优先覆盖 macOS。仓库保持私有包配置，没有公开发布到 npm。
 
+如果全局目录不可写而出现 `EACCES`，可安装到用户目录：
+
+```bash
+npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.3.0.tgz
+```
+
+确保 `$HOME/.local/bin` 已加入 shell 的 `PATH`；尚未配置时，在 `~/.zshrc` 中添加 `export PATH="$HOME/.local/bin:$PATH"` 并重新打开终端。
+
 远程命令需要配套的 PageHush API 和网页版本。此仓库的实现与隔离验收不表示线上服务已经部署；使用前应先完成相应 PageHush 版本部署核对。
 
 ## 服务地址与配置
