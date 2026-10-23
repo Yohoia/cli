@@ -189,6 +189,28 @@ export function createFileArticleStore({
                   value: change.description,
                 });
               break;
+            case "status": {
+              expectedMetadata.status = change.status;
+              expectedMetadata.draft = change.status !== "published";
+              if (
+                current.metadata.status !== expectedMetadata.status ||
+                current.metadata.draft !== expectedMetadata.draft
+              ) {
+                updated = replaceArticleMetadata({
+                  source: updated,
+                  path,
+                  field: "status",
+                  value: expectedMetadata.status,
+                });
+                updated = replaceArticleMetadata({
+                  source: updated,
+                  path,
+                  field: "draft",
+                  value: expectedMetadata.draft,
+                });
+              }
+              break;
+            }
             case "body": {
               const [inputStat, targetStat] = await Promise.all([
                 stat(change.sourcePath),

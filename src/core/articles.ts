@@ -70,6 +70,7 @@ export type ArticleSummary = {
 };
 export type ArticleFieldChange =
   | { kind: "title"; title: ArticleTitle }
+  | { kind: "status"; status: ArticleStatus }
   | { kind: "body"; content: string; sourcePath: string }
   | { kind: "description"; description: string }
   | { kind: "tags"; tags: string[] };
