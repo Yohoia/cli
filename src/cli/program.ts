@@ -39,6 +39,10 @@ export async function runProgram({
   signal: AbortSignal;
 }): Promise<CommandResult | undefined> {
   let result: CommandResult | undefined;
+  async function articlesForProject(project: string | undefined) {
+    const root = await resolveContentRoot({ cwd: process.cwd(), project });
+    return createArticleService(createFileArticleStore({ root, signal }));
+  }
   const program = new Command()
     .name("yoho")
     .description("管理本地博客文章")
@@ -54,13 +58,7 @@ export async function runProgram({
     .option("--status <status>", "按 draft、published 或 archived 状态筛选")
     .action(async (_options: unknown, command: Command) => {
       const options = optionsSchema.parse(command.optsWithGlobals());
-      const root = await resolveContentRoot({
-        cwd: process.cwd(),
-        project: options.project,
-      });
-      const service = createArticleService(
-        createFileArticleStore({ root, signal }),
-      );
+      const service = await articlesForProject(options.project);
       result = {
         kind: "list",
         data: { items: await service.list(options.status) },
@@ -73,13 +71,7 @@ export async function runProgram({
     .action(async (rawId: unknown, _options: unknown, command: Command) => {
       const id = articleIdSchema.parse(rawId);
       const options = optionsSchema.parse(command.optsWithGlobals());
-      const root = await resolveContentRoot({
-        cwd: process.cwd(),
-        project: options.project,
-      });
-      const service = createArticleService(
-        createFileArticleStore({ root, signal }),
-      );
+      const service = await articlesForProject(options.project);
       result = { kind: "show", data: await service.show({ id }) };
     });
   blog
@@ -91,13 +83,7 @@ export async function runProgram({
     .action(async (rawId: unknown, _options: unknown, command: Command) => {
       const id = articleIdSchema.parse(rawId);
       const options = updateOptionsSchema.parse(command.optsWithGlobals());
-      const root = await resolveContentRoot({
-        cwd: process.cwd(),
-        project: options.project,
-      });
-      const service = createArticleService(
-        createFileArticleStore({ root, signal }),
-      );
+      const service = await articlesForProject(options.project);
       result = {
         kind: "update",
         data: await service.update({

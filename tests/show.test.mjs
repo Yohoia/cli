@@ -104,3 +104,50 @@ test("无法表示为 JSON 的循环元数据作为文章数据错误报告", as
   assert.equal(result.code, 3, result.stdout);
   assert.equal(JSON.parse(result.stdout).error.code, "ARTICLE_INVALID");
 });
+
+test("未知 YAML 集合和特殊键在 JSON 查看中完整保留", async (t) => {
+  const project = await fixture(t);
+  await project.write(
+    "rich.md",
+    article({
+      extra: "extra: !!set {a: null, b: null}\n__proto__: {keep: true}\n",
+    }),
+  );
+  const result = await runCli(["blog", "show", "rich", "--json"], {
+    cwd: project.root,
+  });
+  assert.equal(result.code, 0, result.stdout);
+  const metadata = JSON.parse(result.stdout).data.metadata;
+  assert.deepEqual(metadata.extra, { a: null, b: null });
+  assert.equal(Object.hasOwn(metadata, "__proto__"), true);
+  assert.deepEqual(metadata.__proto__, { keep: true });
+});
+
+test("非有限 YAML 数字不能在成功结果中悄悄变成 null", async (t) => {
+  const project = await fixture(t);
+  for (const value of [".inf", "-.inf", ".nan"]) {
+    await project.write("number.md", article({ extra: `extra: ${value}\n` }));
+    const result = await runCli(["blog", "show", "number", "--json"], {
+      cwd: project.root,
+    });
+    assert.equal(result.code, 3, result.stdout);
+    assert.equal(JSON.parse(result.stdout).error.code, "ARTICLE_INVALID");
+  }
+});
+
+test("YAML 标量与博客现有解析规则一致", async (t) => {
+  const project = await fixture(t);
+  for (const [date, expected] of [
+    ["0123", "1970-01-01T00:00:00.083Z"],
+    ["12:34:56", "1970-01-01T00:00:45.296Z"],
+  ]) {
+    await project.write("date.md", article({ title: "On", date }));
+    const result = await runCli(["blog", "show", "date", "--json"], {
+      cwd: project.root,
+    });
+    assert.equal(result.code, 0, result.stdout);
+    const metadata = JSON.parse(result.stdout).data.metadata;
+    assert.equal(metadata.title, "On");
+    assert.equal(metadata.publishedAt, expected);
+  }
+});

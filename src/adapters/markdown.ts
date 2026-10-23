@@ -1,10 +1,17 @@
 import { isAlias, isMap, isScalar, parseDocument } from "yaml";
 import { createHash } from "node:crypto";
+import matter from "gray-matter";
+import { z } from "zod";
 import {
   articleMetadataSchema,
   articleRevisionSchema,
 } from "../core/articles.js";
 import { AppError } from "../core/errors.js";
+
+const rawMetadataSchema = z.custom<Record<string, unknown>>(
+  (value: unknown) =>
+    value !== null && typeof value === "object" && !Array.isArray(value),
+);
 
 function parseHeader({ source, path }: { source: string; path: string }) {
   const opening = /^(?:\uFEFF)?---[ \t]*\r?\n/.exec(source);
@@ -50,11 +57,20 @@ export function parseArticleSource({
   const { document, contentStart } = parseHeader({ source, path });
   let metadata: unknown;
   try {
-    metadata = document.toJS({ maxAliasCount: 100 });
+    document.toJS({ maxAliasCount: 100 });
+    metadata = matter(source).data;
   } catch {
     throw new AppError({
       code: "ARTICLE_INVALID",
       message: `无法解析文章元数据：${path}`,
+      exitCode: 3,
+    });
+  }
+  const raw = rawMetadataSchema.safeParse(metadata);
+  if (!raw.success) {
+    throw new AppError({
+      code: "ARTICLE_INVALID",
+      message: `文章元数据必须是对象：${path}`,
       exitCode: 3,
     });
   }
@@ -66,8 +82,13 @@ export function parseArticleSource({
       exitCode: 3,
     });
   }
+  const preserved = { ...raw.data, ...parsed.data };
   try {
-    JSON.stringify(parsed.data);
+    JSON.stringify(preserved, (_key: string, value: unknown) => {
+      if (typeof value === "number" && !Number.isFinite(value))
+        throw new Error("Non-finite YAML number");
+      return value;
+    });
   } catch {
     throw new AppError({
       code: "ARTICLE_INVALID",
@@ -76,7 +97,7 @@ export function parseArticleSource({
     });
   }
   return {
-    metadata: parsed.data,
+    metadata: preserved,
     content: source.slice(contentStart),
     revision: articleRevisionSchema.parse(
       `sha256:${createHash("sha256").update(source).digest("hex")}`,

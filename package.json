@@ -28,6 +28,7 @@
     "@types/proper-lockfile": "^4.1.4",
     "commander": "^15.0.0",
     "esbuild": "^0.28.2",
+    "gray-matter": "^4.0.3",
     "prettier": "^3.9.10",
     "proper-lockfile": "^4.1.2",
     "typescript": "^7.0.2",
