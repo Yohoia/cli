@@ -3,12 +3,13 @@ import { z } from "zod";
 import manifest from "../../package.json" with { type: "json" };
 import { resolveContentRoot } from "../adapters/project.js";
 import { createFileArticleStore } from "../adapters/article-store.js";
-import { articleIdSchema, articleStatusSchema, createArticleService } from "../core/articles.js";
-import type { Article, ArticleSummary } from "../core/articles.js";
+import { articleIdSchema, articleStatusSchema, articleTitleSchema, createArticleService } from "../core/articles.js";
+import type { Article, ArticleSummary, ArticleUpdate } from "../core/articles.js";
 import { AppError } from "../core/errors.js";
 
 const optionsSchema = z.object({ project: z.string().optional(), json: z.boolean().default(false), status: articleStatusSchema.optional() });
-export type CommandResult = { kind: "list"; data: { items: ArticleSummary[] } } | { kind: "show"; data: Article };
+const updateOptionsSchema = optionsSchema.extend({ title: articleTitleSchema });
+export type CommandResult = { kind: "list"; data: { items: ArticleSummary[] } } | { kind: "show"; data: Article } | { kind: "update"; data: ArticleUpdate };
 
 export async function runProgram({ argv, signal }: { argv: string[]; signal: AbortSignal }): Promise<CommandResult | undefined> {
   let result: CommandResult | undefined;
@@ -37,6 +38,16 @@ export async function runProgram({ argv, signal }: { argv: string[]; signal: Abo
       const root = await resolveContentRoot({ cwd: process.cwd(), project: options.project });
       const service = createArticleService(createFileArticleStore({ root, signal }));
       result = { kind: "show", data: await service.show({ id }) };
+    });
+  blog.command("update").description("修改文章标题")
+    .argument("<id>", "文章标识")
+    .requiredOption("--title <title>", "新标题")
+    .action(async (rawId: unknown, _options: unknown, command: Command) => {
+      const id = articleIdSchema.parse(rawId);
+      const options = updateOptionsSchema.parse(command.optsWithGlobals());
+      const root = await resolveContentRoot({ cwd: process.cwd(), project: options.project });
+      const service = createArticleService(createFileArticleStore({ root, signal }));
+      result = { kind: "update", data: await service.update({ id, title: options.title }) };
     });
   try {
     await program.parseAsync(argv, { from: "user" });

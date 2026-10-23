@@ -1,9 +1,9 @@
-import { parseDocument } from "yaml";
+import { isAlias, isScalar, parseDocument } from "yaml";
 import { createHash } from "node:crypto";
 import { articleMetadataSchema, articleRevisionSchema } from "../core/articles.js";
 import { AppError } from "../core/errors.js";
 
-export function parseArticleSource({ source, path }: { source: string; path: string }) {
+function parseHeader({ source, path }: { source: string; path: string }) {
   const opening = /^(?:\uFEFF)?---[ \t]*\r?\n/.exec(source);
   const closing = opening ? /^(?:---|\.\.\.)[ \t]*(?:\r?\n|$)/m.exec(source.slice(opening[0].length)) : null;
   if (!opening || !closing) {
@@ -15,6 +15,11 @@ export function parseArticleSource({ source, path }: { source: string; path: str
   if (document.errors.length > 0) {
     throw new AppError({ code: "ARTICLE_INVALID", message: `文章元数据损坏：${path}，${document.errors[0]?.message}`, exitCode: 3 });
   }
+  return { document, headerStart, contentStart: headerStart + closing.index + closing[0].length };
+}
+
+export function parseArticleSource({ source, path }: { source: string; path: string }) {
+  const { document, contentStart } = parseHeader({ source, path });
   let metadata: unknown;
   try {
     metadata = document.toJS({ maxAliasCount: 100 });
@@ -32,7 +37,23 @@ export function parseArticleSource({ source, path }: { source: string; path: str
   }
   return {
     metadata: parsed.data,
-    content: source.slice(headerStart + closing.index + closing[0].length),
+    content: source.slice(contentStart),
     revision: articleRevisionSchema.parse(`sha256:${createHash("sha256").update(source).digest("hex")}`),
   };
+}
+
+export function replaceArticleTitle({ source, path, title }: { source: string; path: string; title: string }): string {
+  const { document, headerStart } = parseHeader({ source, path });
+  const node: unknown = document.get("title", true);
+  if ((!isScalar(node) && !isAlias(node)) || !node.range) {
+    throw new AppError({ code: "ARTICLE_INVALID", message: `无法独立定位标题字段：${path}`, exitCode: 3 });
+  }
+  const [start, end] = node.range;
+  let suffix = "";
+  if (node.srcToken?.type === "block-scalar") {
+    suffix = node.srcToken.props.filter(token => token.type !== "block-scalar-header").map(token => "source" in token ? token.source : "").join("");
+    const trailing = /((?:[ \t]*\r?\n)+)$/.exec(node.srcToken.source)?.[0] ?? "";
+    suffix += trailing.replace(/^\r?\n/, "");
+  }
+  return source.slice(0, headerStart + start) + JSON.stringify(title) + suffix + source.slice(headerStart + end);
 }
