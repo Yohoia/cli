@@ -159,3 +159,23 @@ export function replaceArticleTitle({
     source.slice(headerStart + end)
   );
 }
+
+export function replaceArticleBody({
+  source,
+  path,
+  content,
+}: {
+  source: string;
+  path: string;
+  content: string;
+}): string {
+  const { contentStart } = parseHeader({ source, path });
+  const prefix = source.slice(0, contentStart);
+  const separator =
+    content !== "" && !prefix.endsWith("\n")
+      ? source.includes("\r\n")
+        ? "\r\n"
+        : "\n"
+      : "";
+  return prefix + separator + content;
+}

@@ -13,7 +13,11 @@ import { isDeepStrictEqual } from "node:util";
 import { articleIdSchema } from "../core/articles.js";
 import type { Article, ArticleId, ArticleStore } from "../core/articles.js";
 import { AppError, systemErrorCode } from "../core/errors.js";
-import { parseArticleSource, replaceArticleTitle } from "./markdown.js";
+import {
+  parseArticleSource,
+  replaceArticleTitle,
+  replaceArticleBody,
+} from "./markdown.js";
 import { acquireArticleLock } from "./article-lock.js";
 
 export function createFileArticleStore({
@@ -102,30 +106,57 @@ export function createFileArticleStore({
         const source = await readSource(path);
         const current = { id, path, ...parseArticleSource({ source, path }) };
         lease.assertHeld();
-        const change = decide(current);
-        if (change.kind === "unchanged")
-          return {
-            id,
-            title: current.metadata.title,
-            revision: current.revision,
-            changed: false,
-          };
-        const updated = replaceArticleTitle({
-          source,
-          path,
-          title: change.title,
-        });
+        const changes = decide(current);
+        let updated = source;
+        let title = current.metadata.title;
+        let content = current.content;
+        for (const change of changes) {
+          switch (change.kind) {
+            case "title":
+              title = change.title;
+              if (title !== current.metadata.title)
+                updated = replaceArticleTitle({ source: updated, path, title });
+              break;
+            case "body": {
+              const [inputStat, targetStat] = await Promise.all([
+                stat(change.sourcePath),
+                stat(path),
+              ]);
+              if (
+                inputStat.dev === targetStat.dev &&
+                inputStat.ino === targetStat.ino
+              ) {
+                throw new AppError({
+                  code: "INVALID_ARGUMENT",
+                  message: `正文输入不能与目标文章是同一文件：${id}`,
+                  exitCode: 2,
+                });
+              }
+              content = change.content;
+              if (content !== current.content)
+                updated = replaceArticleBody({
+                  source: updated,
+                  path,
+                  content,
+                });
+              break;
+            }
+            default: {
+              const exhaustive: never = change;
+              return exhaustive;
+            }
+          }
+        }
+        if (updated === source)
+          return { id, title, revision: current.revision, changed: false };
         const next = parseArticleSource({ source: updated, path });
         if (
-          !isDeepStrictEqual(
-            { ...next.metadata, title: current.metadata.title },
-            current.metadata,
-          ) ||
-          next.content !== current.content
+          !isDeepStrictEqual(next.metadata, { ...current.metadata, title }) ||
+          next.content !== content
         ) {
           throw new AppError({
             code: "ARTICLE_INVALID",
-            message: `标题与其他内容存在关联，无法独立修改：${path}`,
+            message: `指定字段与其他内容存在关联，无法独立修改：${path}`,
             exitCode: 3,
           });
         }
@@ -161,7 +192,7 @@ export function createFileArticleStore({
         }
         return {
           id,
-          title: change.title,
+          title,
           revision: next.revision,
           changed: true,
         };

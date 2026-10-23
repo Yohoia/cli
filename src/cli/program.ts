@@ -1,3 +1,5 @@
+import { open, realpath, stat } from "node:fs/promises";
+import { resolve } from "node:path";
 import { Command, CommanderError } from "commander";
 import { z } from "zod";
 import manifest from "../../package.json" with { type: "json" };
@@ -12,6 +14,7 @@ import {
 } from "../core/articles.js";
 import type {
   Article,
+  ArticleChanges,
   ArticleSummary,
   ArticleUpdate,
 } from "../core/articles.js";
@@ -22,10 +25,53 @@ const optionsSchema = z.object({
   json: z.boolean().default(false),
   status: articleStatusSchema.optional(),
 });
-const updateOptionsSchema = optionsSchema.extend({
-  title: articleTitleSchema,
-  ifMatch: articleRevisionSchema.optional(),
-});
+const updateOptionsSchema = optionsSchema
+  .extend({
+    title: articleTitleSchema.optional(),
+    bodyFile: z.string().min(1).optional(),
+    ifMatch: articleRevisionSchema.optional(),
+  })
+  .refine(
+    (options) => options.title !== undefined || options.bodyFile !== undefined,
+    "至少提供标题或正文更新",
+  );
+
+async function readBodyInput(path: string, signal: AbortSignal) {
+  const sourcePath = await realpath(resolve(process.cwd(), path));
+  if (!(await stat(sourcePath)).isFile()) {
+    throw new AppError({
+      code: "INVALID_ARGUMENT",
+      message: `正文输入不是普通文件：${path}`,
+      exitCode: 2,
+    });
+  }
+  const file = await open(sourcePath, "r");
+  try {
+    if (!(await file.stat()).isFile()) {
+      throw new AppError({
+        code: "INVALID_ARGUMENT",
+        message: `正文输入不是普通文件：${path}`,
+        exitCode: 2,
+      });
+    }
+    const bytes = await file.readFile({ signal });
+    const content = bytes.toString("utf8");
+    if (!Buffer.from(content, "utf8").equals(bytes)) {
+      throw new AppError({
+        code: "INVALID_ARGUMENT",
+        message: `正文输入不是有效 UTF-8：${path}`,
+        exitCode: 2,
+      });
+    }
+    return {
+      kind: "body",
+      content,
+      sourcePath,
+    } satisfies ArticleChanges[number];
+  } finally {
+    await file.close();
+  }
+}
 export type CommandResult =
   | { kind: "list"; data: { items: ArticleSummary[] } }
   | { kind: "show"; data: Article }
@@ -76,19 +122,34 @@ export async function runProgram({
     });
   blog
     .command("update")
-    .description("修改文章标题")
+    .description("修改文章标题或正文")
     .argument("<id>", "文章标识")
-    .requiredOption("--title <title>", "新标题")
+    .option("--title <title>", "新标题")
+    .option("--body-file <path>", "UTF-8 正文输入文件")
     .option("--if-match <revision>", "仅当文章版本匹配时更新")
     .action(async (rawId: unknown, _options: unknown, command: Command) => {
       const id = articleIdSchema.parse(rawId);
       const options = updateOptionsSchema.parse(command.optsWithGlobals());
+      let changes: ArticleChanges;
+      if (options.title !== undefined) {
+        changes = [{ kind: "title", title: options.title }];
+        if (options.bodyFile !== undefined)
+          changes.push(await readBodyInput(options.bodyFile, signal));
+      } else if (options.bodyFile !== undefined) {
+        changes = [await readBodyInput(options.bodyFile, signal)];
+      } else {
+        throw new AppError({
+          code: "INVALID_ARGUMENT",
+          message: "至少提供标题或正文更新",
+          exitCode: 2,
+        });
+      }
       const service = await articlesForProject(options.project);
       result = {
         kind: "update",
         data: await service.update({
           id,
-          title: options.title,
+          changes,
           condition:
             options.ifMatch === undefined
               ? { kind: "any" }
