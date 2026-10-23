@@ -1,5 +1,5 @@
 import { after } from "node:test";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, dirname, resolve } from "node:path";
 import { execFile, spawn } from "node:child_process";
@@ -64,7 +64,7 @@ export async function runCli(args, options) {
 }
 
 export async function fixture(t) {
-  const root = await mkdtemp(join(tmpdir(), "yoho-articles-"));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "yoho-articles-")));
   const content = join(root, "content", "blog");
   await mkdir(content, { recursive: true });
   t.after(() => rm(root, { recursive: true, force: true }));

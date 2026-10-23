@@ -3,12 +3,12 @@ import { z } from "zod";
 import manifest from "../../package.json" with { type: "json" };
 import { resolveContentRoot } from "../adapters/project.js";
 import { createFileArticleStore } from "../adapters/article-store.js";
-import { articleStatusSchema, createArticleService } from "../core/articles.js";
-import type { ArticleSummary } from "../core/articles.js";
+import { articleIdSchema, articleStatusSchema, createArticleService } from "../core/articles.js";
+import type { Article, ArticleSummary } from "../core/articles.js";
 import { AppError } from "../core/errors.js";
 
 const optionsSchema = z.object({ project: z.string().optional(), json: z.boolean().default(false), status: articleStatusSchema.optional() });
-export type CommandResult = { kind: "list"; data: { items: ArticleSummary[] } };
+export type CommandResult = { kind: "list"; data: { items: ArticleSummary[] } } | { kind: "show"; data: Article };
 
 export async function runProgram({ argv, signal }: { argv: string[]; signal: AbortSignal }): Promise<CommandResult | undefined> {
   let result: CommandResult | undefined;
@@ -28,6 +28,15 @@ export async function runProgram({ argv, signal }: { argv: string[]; signal: Abo
       const root = await resolveContentRoot({ cwd: process.cwd(), project: options.project });
       const service = createArticleService(createFileArticleStore({ root, signal }));
       result = { kind: "list", data: { items: await service.list(options.status) } };
+    });
+  blog.command("show").description("查看完整文章")
+    .argument("<id>", "文章标识")
+    .action(async (rawId: unknown, _options: unknown, command: Command) => {
+      const id = articleIdSchema.parse(rawId);
+      const options = optionsSchema.parse(command.optsWithGlobals());
+      const root = await resolveContentRoot({ cwd: process.cwd(), project: options.project });
+      const service = createArticleService(createFileArticleStore({ root, signal }));
+      result = { kind: "show", data: await service.show({ id }) };
     });
   try {
     await program.parseAsync(argv, { from: "user" });

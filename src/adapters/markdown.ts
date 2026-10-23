@@ -1,5 +1,6 @@
 import { parseDocument } from "yaml";
-import { articleMetadataSchema } from "../core/articles.js";
+import { createHash } from "node:crypto";
+import { articleMetadataSchema, articleRevisionSchema } from "../core/articles.js";
 import { AppError } from "../core/errors.js";
 
 export function parseArticleSource({ source, path }: { source: string; path: string }) {
@@ -24,8 +25,14 @@ export function parseArticleSource({ source, path }: { source: string; path: str
   if (!parsed.success) {
     throw new AppError({ code: "ARTICLE_INVALID", message: `文章元数据无效：${path}，${parsed.error.message}`, exitCode: 3 });
   }
+  try {
+    JSON.stringify(parsed.data);
+  } catch {
+    throw new AppError({ code: "ARTICLE_INVALID", message: `文章元数据无法表示为 JSON：${path}`, exitCode: 3 });
+  }
   return {
     metadata: parsed.data,
     content: source.slice(headerStart + closing.index + closing[0].length),
+    revision: articleRevisionSchema.parse(`sha256:${createHash("sha256").update(source).digest("hex")}`),
   };
 }

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { runProgram } from "../cli/program.js";
+import { renderText } from "../cli/output.js";
 import { normalizeError } from "../core/errors.js";
 
 async function main(): Promise<void> {
@@ -13,7 +14,7 @@ try {
   const result = await runProgram({ argv, signal: controller.signal });
   if (result) {
     if (json) process.stdout.write(`${JSON.stringify({ ok: true, data: result.data })}\n`);
-    else process.stdout.write(`${result.data.items.map(item => `${item.id}\t${item.status}\t${item.publishedAt.slice(0, 10)}\t${item.title}`).join("\n")}\n`);
+    else process.stdout.write(renderText(result));
   }
 } catch (error) {
   const failure = normalizeError(error, controller.signal);

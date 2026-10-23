@@ -1,6 +1,8 @@
 import { z } from "zod";
 
 export const articleStatusSchema = z.enum(["draft", "published", "archived"]);
+export const articleIdSchema = z.string().min(1).refine(value => !/[\\\0]/.test(value) && !/^[a-z]:/i.test(value) && value.split("/").every(segment => segment !== "" && segment !== "." && segment !== ".."), "文章标识必须是文章目录内的相对标识").brand<"ArticleId">();
+export const articleRevisionSchema = z.string().min(1).brand<"ArticleRevision">();
 export const articleMetadataSchema = z.object({
   title: z.string(),
   description: z.string(),
@@ -18,15 +20,19 @@ export const articleMetadataSchema = z.object({
 
 export type ArticleMetadata = z.infer<typeof articleMetadataSchema>;
 export type ArticleStatus = z.infer<typeof articleStatusSchema>;
-export type Article = { id: string; path: string; metadata: ArticleMetadata; content: string };
-export type ArticleSummary = { id: string; title: string; status: ArticleStatus; publishedAt: string };
+export type ArticleId = z.infer<typeof articleIdSchema>;
+export type ArticleRevision = z.infer<typeof articleRevisionSchema>;
+export type Article = { id: ArticleId; path: string; metadata: ArticleMetadata; content: string; revision: ArticleRevision };
+export type ArticleSummary = { id: ArticleId; title: string; status: ArticleStatus; publishedAt: string };
 
 export interface ArticleStore {
   list(): Promise<Article[]>;
+  read(input: { id: ArticleId }): Promise<Article>;
 }
 
 export function createArticleService(store: ArticleStore) {
   return {
+    show: store.read,
     async list(status: ArticleStatus | undefined): Promise<ArticleSummary[]> {
       const articles = await store.list();
       return articles
