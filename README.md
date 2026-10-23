@@ -7,7 +7,7 @@
 需要 Node.js 24 或更高版本。获得本地打包文件后安装：
 
 ```bash
-npm install --global ./yoho-cli-0.1.0.tgz
+npm install --global ./yoho-cli-0.2.0.tgz
 yoho --version
 ```
 

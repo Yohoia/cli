@@ -1,6 +1,6 @@
 {
   "name": "yoho-cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Manage local Yoho blog articles from the terminal or an AI product",
   "type": "module",
