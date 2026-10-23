@@ -1,17 +1,6 @@
 import { z } from "zod";
 
-type ErrorCode =
-  | "INVALID_ARGUMENT"
-  | "PROJECT_NOT_FOUND"
-  | "ARTICLE_INVALID"
-  | "ARTICLE_ALREADY_EXISTS"
-  | "ARTICLE_NOT_FOUND"
-  | "ARTICLE_ID_AMBIGUOUS"
-  | "ARTICLE_CONFLICT"
-  | "PATH_OUTSIDE_CONTENT"
-  | "PERMISSION_DENIED"
-  | "IO_ERROR"
-  | "CANCELLED";
+type ErrorCode = string;
 type ExitCode = 2 | 3 | 4 | 5 | 130;
 
 export class AppError extends Error {
@@ -42,13 +31,13 @@ export function systemErrorCode(error: unknown): string | undefined {
 }
 
 export function normalizeError(error: unknown, signal: AbortSignal): AppError {
+  if (error instanceof AppError) return error;
   if (signal.aborted)
     return new AppError({
       code: "CANCELLED",
       message: "操作已取消",
       exitCode: 130,
     });
-  if (error instanceof AppError) return error;
   if (error instanceof z.ZodError) {
     return new AppError({
       code: "INVALID_ARGUMENT",

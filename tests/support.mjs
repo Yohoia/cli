@@ -1,7 +1,7 @@
 import { after } from "node:test";
-import { mkdtemp, mkdir, writeFile, rm, realpath } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, dirname, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -85,31 +85,4 @@ export async function startCli(args, { cwd, env = {} }) {
 
 export async function runCli(args, options) {
   return (await startCli(args, options)).result;
-}
-
-export async function fixture(t) {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "yoho-articles-")));
-  const content = join(root, "content", "blog");
-  await mkdir(content, { recursive: true });
-  t.after(() => rm(root, { recursive: true, force: true }));
-  return {
-    root,
-    content,
-    async write(name, source) {
-      const file = join(content, name);
-      await mkdir(dirname(file), { recursive: true });
-      await writeFile(file, source);
-      return file;
-    },
-  };
-}
-
-export function article({
-  title = "原始标题",
-  status = "published",
-  date = "2026-10-01",
-  extra = "",
-  body = "\n# 正文标题\n\n文章正文。\n",
-} = {}) {
-  return `---\ntitle: ${title}\ndescription: Example\nstatus: ${status}\npublishedAt: ${date}\n${extra}---\n${body}`;
 }

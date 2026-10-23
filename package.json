@@ -1,8 +1,8 @@
 {
   "name": "yoho-cli",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Manage local Yoho blog articles from the terminal or an AI product",
+  "description": "Manage remote PageHush blog articles from the terminal or an AI product",
   "type": "module",
   "bin": {
     "yoho": "dist/cli.cjs"
@@ -24,14 +24,14 @@
     "prepack": "pnpm build"
   },
   "devDependencies": {
+    "@types/mdast": "4.0.4",
     "@types/node": "^24.19.2",
-    "@types/proper-lockfile": "^4.1.4",
     "commander": "^15.0.0",
     "esbuild": "^0.28.2",
-    "gray-matter": "^4.0.3",
     "prettier": "^3.9.10",
-    "proper-lockfile": "^4.1.2",
+    "remark-parse": "11.0.0",
     "typescript": "^7.0.2",
+    "unified": "11.0.5",
     "yaml": "^2.9.1",
     "zod": "^4.6.7"
   },
