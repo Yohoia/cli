@@ -58,6 +58,19 @@ yoho blog update nested/article --title '新的标题' --if-match 'REVISION_FROM
 
 版本过期时返回 `ARTICLE_CONFLICT`，文件保持当前内容。并发 CLI 更新使用文章锁，将版本检查和写入放在同一次操作中。未传 `--if-match` 时，CLI 基于当前文件修改标题。
 
+## 删除预览
+
+删除前可以核对目标文章、实际位置与当前版本：
+
+```bash
+yoho blog delete nested/article --dry-run
+yoho blog delete nested/article --dry-run --if-match 'REVISION_FROM_SHOW' --json
+```
+
+预览是只读操作，不创建锁、不修改文章或目录。JSON 结果包含 `id`、`path`、`revision`、`dryRun=true` 和 `deleted=false`；文本明确标记尚未删除。`--yes` 与 `--dry-run` 同时使用仍只执行预览。本阶段未接通实际删除，省略 `--dry-run` 会直接报参数错误，无需交互。
+
+预览会验证目标文章及可选的文章版本，拒绝损坏、歧义、越界或包含符号链接的删除路径。它不预留目标；之后实际删除时，调用方需将预览得到的版本传给 `--if-match`，才能确保删除的仍是预览时的文章。
+
 | 退出码 | 含义                             |
 | ------ | -------------------------------- |
 | 0      | 成功                             |
