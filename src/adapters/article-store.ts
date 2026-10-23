@@ -169,6 +169,26 @@ export function createFileArticleStore({
               if (title !== current.metadata.title)
                 updated = replaceArticleTitle({ source: updated, path, title });
               break;
+            case "tags":
+              expectedMetadata.tags = change.tags;
+              if (!isDeepStrictEqual(change.tags, current.metadata.tags))
+                updated = replaceArticleMetadata({
+                  source: updated,
+                  path,
+                  field: "tags",
+                  value: change.tags,
+                });
+              break;
+            case "description":
+              expectedMetadata.description = change.description;
+              if (change.description !== current.metadata.description)
+                updated = replaceArticleMetadata({
+                  source: updated,
+                  path,
+                  field: "description",
+                  value: change.description,
+                });
+              break;
             case "status": {
               expectedMetadata.status = change.status;
               expectedMetadata.draft = change.status !== "published";

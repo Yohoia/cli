@@ -10,6 +10,7 @@ import {
   articleRevisionSchema,
   articleStatusSchema,
   articleTitleSchema,
+  articleTagsSchema,
   createArticleService,
 } from "../core/articles.js";
 import type {
@@ -29,6 +30,9 @@ const optionsSchema = z.object({
 const updateOptionsSchema = optionsSchema
   .extend({
     title: articleTitleSchema.optional(),
+    description: z.string().optional(),
+    tag: articleTagsSchema.optional(),
+    clearTags: z.boolean().default(false),
     bodyFile: z.string().min(1).optional(),
     ifMatch: articleRevisionSchema.optional(),
   })
@@ -36,8 +40,15 @@ const updateOptionsSchema = optionsSchema
     (options) =>
       options.title !== undefined ||
       options.bodyFile !== undefined ||
+      options.description !== undefined ||
+      options.tag !== undefined ||
+      options.clearTags ||
       options.status !== undefined,
-    "至少提供标题、正文或状态更新",
+    "至少提供一项文章内容更新",
+  )
+  .refine(
+    (options) => !(options.clearTags && options.tag !== undefined),
+    "--tag 与 --clear-tags 不能同时使用",
   );
 
 async function readBodyInput(path: string, signal: AbortSignal) {
@@ -154,36 +165,45 @@ export async function runProgram({
     });
   blog
     .command("update")
-    .description("修改文章标题、正文或状态")
+    .description("修改文章标题、正文、描述、标签或状态")
     .argument("<id>", "文章标识")
     .option("--title <title>", "新标题")
+    .option("--description <description>", "新描述，允许空字符串")
+    .option(
+      "--tag <tag>",
+      "替换标签，可重复指定",
+      (value: string, previous: string[] = []) => [...previous, value],
+    )
+    .option("--clear-tags", "清空全部标签")
     .option("--body-file <path>", "UTF-8 正文输入文件")
     .option("--status <status>", "设为 draft、published 或 archived")
     .option("--if-match <revision>", "仅当文章版本匹配时更新")
     .action(async (rawId: unknown, _options: unknown, command: Command) => {
       const id = articleIdSchema.parse(rawId);
       const options = updateOptionsSchema.parse(command.optsWithGlobals());
-      let changes: ArticleChanges;
-      if (options.title !== undefined) {
-        changes = [{ kind: "title", title: options.title }];
-        if (options.bodyFile !== undefined)
-          changes.push(await readBodyInput(options.bodyFile, signal));
-      } else if (options.bodyFile !== undefined) {
-        changes = [await readBodyInput(options.bodyFile, signal)];
-      } else if (options.status !== undefined) {
-        changes = [{ kind: "status", status: options.status }];
-      } else {
+      const requested: ArticleChanges[number][] = [];
+      if (options.title !== undefined)
+        requested.push({ kind: "title", title: options.title });
+      if (options.bodyFile !== undefined)
+        requested.push(await readBodyInput(options.bodyFile, signal));
+      if (options.description !== undefined)
+        requested.push({
+          kind: "description",
+          description: options.description,
+        });
+      if (options.tag !== undefined || options.clearTags)
+        requested.push({ kind: "tags", tags: options.tag ?? [] });
+      if (options.status !== undefined)
+        requested.push({ kind: "status", status: options.status });
+      const [first, ...rest] = requested;
+      if (first === undefined) {
         throw new AppError({
           code: "INVALID_ARGUMENT",
-          message: "至少提供标题、正文或状态更新",
+          message: "至少提供一项文章内容更新",
           exitCode: 2,
         });
       }
-      if (
-        options.status !== undefined &&
-        !changes.some((change) => change.kind === "status")
-      )
-        changes.push({ kind: "status", status: options.status });
+      const changes: ArticleChanges = [first, ...rest];
       const service = await articlesForProject(options.project);
       result = {
         kind: "update",

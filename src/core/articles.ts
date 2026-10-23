@@ -30,6 +30,9 @@ export const articleTitleSchema = z
   .transform((value) => value.trim())
   .pipe(z.string().min(1, "标题不能为空"))
   .brand<"ArticleTitle">();
+export const articleTagsSchema = z
+  .array(z.string().trim().min(1, "标签不能为空"))
+  .transform((tags) => [...new Set(tags)]);
 export const articleMetadataSchema = z
   .object({
     title: z.string(),
@@ -68,7 +71,9 @@ export type ArticleSummary = {
 export type ArticleFieldChange =
   | { kind: "title"; title: ArticleTitle }
   | { kind: "status"; status: ArticleStatus }
-  | { kind: "body"; content: string; sourcePath: string };
+  | { kind: "body"; content: string; sourcePath: string }
+  | { kind: "description"; description: string }
+  | { kind: "tags"; tags: string[] };
 export type ArticleChanges = [ArticleFieldChange, ...ArticleFieldChange[]];
 export type ArticleUpdate = {
   id: ArticleId;

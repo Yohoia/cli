@@ -104,7 +104,7 @@ test("状态与草稿标记按读取默认值判断无变化，同状态的草�
   }
 });
 
-test("状态与标题正文组合一次提交；未指定状态不改草稿标记；非法输入整体失败", async (t) => {
+test("状态与标题正文描述标签组合一次提交；未指定状态不改草稿标记；非法输入整体失败", async (t) => {
   const project = await fixture(t);
   const source = article({ status: "draft", extra: "draft: false\n" });
   const file = await project.write("article.md", source);
@@ -143,6 +143,10 @@ test("状态与标题正文组合一次提交；未指定状态不改草稿标�
       "新标题",
       "--body-file",
       input,
+      "--description",
+      "新的描述",
+      "--tag",
+      "状态管理",
       "--json",
     ],
     { cwd: project.root },
@@ -153,6 +157,8 @@ test("状态与标题正文组合一次提交；未指定状态不改草稿标�
       .stdout,
   ).data;
   assert.equal(shown.metadata.title, "新标题");
+  assert.equal(shown.metadata.description, "新的描述");
+  assert.deepEqual(shown.metadata.tags, ["状态管理"]);
   assert.equal(shown.metadata.status, "published");
   assert.equal(shown.metadata.draft, false);
   assert.equal(shown.content, "新的正文\r\n");

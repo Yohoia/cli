@@ -1,4 +1,4 @@
-import { isAlias, isMap, isScalar, parseDocument } from "yaml";
+import { isAlias, isMap, isScalar, isSeq, parseDocument } from "yaml";
 import { createHash } from "node:crypto";
 import matter from "gray-matter";
 import { z } from "zod";
@@ -105,18 +105,6 @@ export function parseArticleSource({
   };
 }
 
-export function replaceArticleTitle({
-  source,
-  path,
-  title,
-}: {
-  source: string;
-  path: string;
-  title: string;
-}): string {
-  return replaceArticleMetadata({ source, path, field: "title", value: title });
-}
-
 export function replaceArticleMetadata({
   source,
   path,
@@ -125,9 +113,11 @@ export function replaceArticleMetadata({
 }: {
   source: string;
   path: string;
-  field: "title" | "description" | "tags" | "status" | "draft";
-  value: string | string[] | boolean;
-}): string {
+} & (
+  | { field: "title" | "description" | "status"; value: string }
+  | { field: "tags"; value: string[] }
+  | { field: "draft"; value: boolean }
+)): string {
   const { document, headerStart, headerEnd } = parseHeader({ source, path });
   const node: unknown = document.get(field, true);
   if (node === undefined && isMap(document.contents)) {
@@ -148,10 +138,10 @@ export function replaceArticleMetadata({
       source.slice(headerEnd)
     );
   }
-  if ((!isScalar(node) && !isAlias(node)) || !node.range) {
+  if ((!isScalar(node) && !isAlias(node) && !isSeq(node)) || !node.range) {
     throw new AppError({
       code: "ARTICLE_INVALID",
-      message: `无法独立定位元数据字段：${path}`,
+      message: `无法独立定位指定字段：${path}`,
       exitCode: 3,
     });
   }
@@ -169,6 +159,11 @@ export function replaceArticleMetadata({
   return (
     source.slice(0, headerStart + start) +
     JSON.stringify(value) +
+    (isSeq(node) && !node.flow
+      ? source.includes("\r\n")
+        ? "\r\n"
+        : "\n"
+      : "") +
     suffix +
     source.slice(headerStart + end)
   );
@@ -192,4 +187,16 @@ export function replaceArticleBody({
         : "\n"
       : "";
   return prefix + separator + content;
+}
+
+export function replaceArticleTitle(input: {
+  source: string;
+  path: string;
+  title: string;
+}): string {
+  return replaceArticleMetadata({
+    ...input,
+    field: "title",
+    value: input.title,
+  });
 }
