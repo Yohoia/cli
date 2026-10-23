@@ -113,9 +113,11 @@ export function replaceArticleMetadata({
 }: {
   source: string;
   path: string;
-  field: "title" | "description" | "tags" | "status" | "draft";
-  value: string | string[] | boolean;
-}): string {
+} & (
+  | { field: "title" | "description" | "status"; value: string }
+  | { field: "tags"; value: string[] }
+  | { field: "draft"; value: boolean }
+)): string {
   const { document, headerStart, headerEnd } = parseHeader({ source, path });
   const node: unknown = document.get(field, true);
   if (node === undefined && isMap(document.contents)) {
