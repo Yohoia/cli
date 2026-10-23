@@ -10,6 +10,7 @@ import {
   rename,
   rm,
   stat,
+  unlink,
 } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import {
@@ -223,6 +224,48 @@ export function createFileArticleStore({
       const path = await resolveArticlePath(id);
       const source = await readSource(path);
       return { id, path, ...parseArticleSource({ source, path }) };
+    },
+    async remove({ id, check }) {
+      signal.throwIfAborted();
+      await rejectLinkedMutationPath(id);
+      const path = await resolveArticlePath(id);
+      const lease = await acquireArticleLock({ path, signal });
+      try {
+        lease.assertHeld();
+        await rejectLinkedMutationPath(id);
+        if ((await resolveArticlePath(id)) !== path) {
+          throw new AppError({
+            code: "ARTICLE_CONFLICT",
+            message: `文章位置发生变化，请重新读取：${id}`,
+            exitCode: 3,
+          });
+        }
+        const source = await readSource(path);
+        const current = { id, path, ...parseArticleSource({ source, path }) };
+        check(current);
+        await rejectLinkedMutationPath(id);
+        if (
+          (await resolveArticlePath(id)) !== path ||
+          (await readSource(path)) !== source
+        ) {
+          throw new AppError({
+            code: "ARTICLE_CONFLICT",
+            message: `文章在删除期间发生变化，请重新读取：${id}`,
+            exitCode: 3,
+          });
+        }
+        lease.assertHeld();
+        await unlink(path);
+        return {
+          id,
+          path,
+          revision: current.revision,
+          dryRun: false,
+          deleted: true,
+        };
+      } finally {
+        await lease.release().catch(() => undefined);
+      }
     },
     async edit({ id, decide }) {
       signal.throwIfAborted();

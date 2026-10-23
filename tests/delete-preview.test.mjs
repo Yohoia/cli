@@ -80,7 +80,7 @@ test("安装后的 CLI 预览普通及子目录文章删除，无文件内容、
   assert.match(text.stdout, /版本/);
 });
 
-test("预览校验文章版本，未指定预览模式时不会交互或删除", async (t) => {
+test("预览校验文章版本，缺少删除授权时不会交互或删除", async (t) => {
   const project = await fixture(t);
   const file = await project.write("article.md", article());
   const shown = await runCli(["blog", "show", "article", "--json"], {
@@ -116,7 +116,7 @@ test("预览校验文章版本，未指定预览模式时不会交互或删除",
   );
   assert.equal(stale.code, 3, stale.stdout);
   assert.equal(JSON.parse(stale.stdout).error.code, "ARTICLE_CONFLICT");
-  for (const flags of [[], ["--yes"], ["--dry-run", "--if-match", ""]]) {
+  for (const flags of [[], ["--dry-run", "--if-match", ""]]) {
     const result = await runCli(
       ["blog", "delete", "article", "--json", ...flags],
       { cwd: project.root },

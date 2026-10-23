@@ -16,6 +16,7 @@ import {
 import type {
   Article,
   ArticleChanges,
+  ArticleDeletion,
   ArticleDeletionPreview,
   ArticleSummary,
   ArticleUpdate,
@@ -129,16 +130,19 @@ const createOptionsSchema = optionsSchema.extend({
   bodyFile: z.string().min(1).optional(),
   tag: articleTagsSchema.default([]),
 });
-const deleteOptionsSchema = optionsSchema.extend({
-  dryRun: z.literal(true, "此阶段仅支持 --dry-run 删除预览"),
-  yes: z.boolean().optional(),
-  ifMatch: articleRevisionSchema.optional(),
-});
+const deleteOptionsSchema = optionsSchema
+  .extend({
+    dryRun: z.boolean().default(false),
+    yes: z.boolean().default(false),
+    ifMatch: articleRevisionSchema.optional(),
+  })
+  .refine((options) => options.dryRun || options.yes, "实际删除必须提供 --yes");
 export type CommandResult =
   | { kind: "list"; data: { items: ArticleSummary[] } }
   | { kind: "show"; data: Article }
   | { kind: "create"; data: Article }
   | { kind: "delete-preview"; data: ArticleDeletionPreview }
+  | { kind: "delete"; data: ArticleDeletion }
   | { kind: "update"; data: ArticleUpdate };
 
 export async function runProgram({
@@ -221,25 +225,25 @@ export async function runProgram({
     });
   blog
     .command("delete")
-    .description("预览文章删除")
+    .description("预览或删除文章")
     .argument("<id>", "文章标识")
     .option("--dry-run", "只读预览，不删除文章")
     .option("--yes", "显式授权；与 --dry-run 同时提供时仍只预览")
-    .option("--if-match <revision>", "仅当文章版本匹配时预览")
+    .option("--if-match <revision>", "仅当文章版本匹配时预览或删除")
     .action(async (rawId: unknown, _options: unknown, command: Command) => {
       const id = articleIdSchema.parse(rawId);
       const options = deleteOptionsSchema.parse(command.optsWithGlobals());
       const service = await articlesForProject(options.project);
-      result = {
-        kind: "delete-preview",
-        data: await service.previewDelete({
-          id,
-          condition:
-            options.ifMatch === undefined
-              ? { kind: "any" }
-              : { kind: "matches", revision: options.ifMatch },
-        }),
-      };
+      const request = {
+        id,
+        condition:
+          options.ifMatch === undefined
+            ? { kind: "any" }
+            : { kind: "matches", revision: options.ifMatch },
+      } satisfies Parameters<typeof service.previewDelete>[0];
+      result = options.dryRun
+        ? { kind: "delete-preview", data: await service.previewDelete(request) }
+        : { kind: "delete", data: await service.delete(request) };
     });
   blog
     .command("update")
