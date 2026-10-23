@@ -33,8 +33,11 @@ const updateOptionsSchema = optionsSchema
     ifMatch: articleRevisionSchema.optional(),
   })
   .refine(
-    (options) => options.title !== undefined || options.bodyFile !== undefined,
-    "至少提供标题或正文更新",
+    (options) =>
+      options.title !== undefined ||
+      options.bodyFile !== undefined ||
+      options.status !== undefined,
+    "至少提供标题、正文或状态更新",
   );
 
 async function readBodyInput(path: string, signal: AbortSignal) {
@@ -151,10 +154,11 @@ export async function runProgram({
     });
   blog
     .command("update")
-    .description("修改文章标题或正文")
+    .description("修改文章标题、正文或状态")
     .argument("<id>", "文章标识")
     .option("--title <title>", "新标题")
     .option("--body-file <path>", "UTF-8 正文输入文件")
+    .option("--status <status>", "设为 draft、published 或 archived")
     .option("--if-match <revision>", "仅当文章版本匹配时更新")
     .action(async (rawId: unknown, _options: unknown, command: Command) => {
       const id = articleIdSchema.parse(rawId);
@@ -166,13 +170,20 @@ export async function runProgram({
           changes.push(await readBodyInput(options.bodyFile, signal));
       } else if (options.bodyFile !== undefined) {
         changes = [await readBodyInput(options.bodyFile, signal)];
+      } else if (options.status !== undefined) {
+        changes = [{ kind: "status", status: options.status }];
       } else {
         throw new AppError({
           code: "INVALID_ARGUMENT",
-          message: "至少提供标题或正文更新",
+          message: "至少提供标题、正文或状态更新",
           exitCode: 2,
         });
       }
+      if (
+        options.status !== undefined &&
+        !changes.some((change) => change.kind === "status")
+      )
+        changes.push({ kind: "status", status: options.status });
       const service = await articlesForProject(options.project);
       result = {
         kind: "update",

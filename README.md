@@ -1,6 +1,6 @@
 # Yoho CLI
 
-通过终端或本地产品管理现有博客的 Markdown、MDX 文章。当前支持列出文章、查看完整文章和修改标题、正文。
+通过终端或本地产品管理现有博客的 Markdown、MDX 文章。当前支持列出文章、查看完整文章和修改标题、正文与文章状态。
 
 ## 安装
 
@@ -22,6 +22,7 @@ yoho blog list
 yoho blog list --status draft
 yoho blog show nested/article
 yoho blog update nested/article --title '新的文章标题'
+yoho blog update nested/article --status published
 yoho blog update nested/article --body-file ./article-body.md
 yoho blog update nested/article --title '新的文章标题' --body-file ./article-body.md
 ```
@@ -33,6 +34,14 @@ yoho --project /path/to/blog blog list --json
 ```
 
 文章标识是相对于文章目录的路径，去掉 `.md` 或 `.mdx` 扩展名。修改标题保持文件名、文章标识和访问地址不变。管理列表默认包含草稿、已发布和已归档文章，文章状态不等同于网站公开可见性。
+
+## 文章状态
+
+`update --status` 接受 `draft`、`published` 或 `archived`，可以与标题和正文一起提交。设置草稿时同时写入 `status=draft`、`draft=true`；已发布为 `status=published`、`draft=false`；归档为 `status=archived`、`draft=true`。未提供状态参数时保留原始状态和草稿标记。
+
+同状态但草稿标记不一致时会纠正。按读取默认值解释后两个字段已经满足目标时不补写默认字段，返回 `changed=false`，保留版本和修改时间。状态更新同样支持 `--if-match`，且不修改日期、正文、图片引用或权限。
+
+已发布表示博客下一次读取本地内容时满足公开展示条件。CLI 不执行 Git 操作、同步、构建或部署，不增加定时发布；管理列表仍包含全部状态。
 
 ## 程序调用
 
@@ -58,7 +67,7 @@ yoho blog show nested/article --json
 yoho blog update nested/article --title '新的标题' --if-match 'REVISION_FROM_SHOW' --json
 ```
 
-版本过期时返回 `ARTICLE_CONFLICT`，文件保持当前内容。并发 CLI 更新使用文章锁，将版本检查和写入放在同一次操作中。未传 `--if-match` 时，CLI 基于当前文件只修改指定的标题或正文。
+版本过期时返回 `ARTICLE_CONFLICT`，文件保持当前内容。并发 CLI 更新使用文章锁，将版本检查和写入放在同一次操作中。未传 `--if-match` 时，CLI 基于当前文件只修改指定字段。
 
 ## 删除预览
 
@@ -84,7 +93,7 @@ yoho blog delete nested/article --dry-run --if-match 'REVISION_FROM_SHOW' --json
 
 ## 内容保护
 
-更新至少提供 `--title` 或 `--body-file`。标题去除首尾空白后必须为非空单行文本。正文输入路径相对于调用命令的当前目录解析，与 `--project` 无关，可以位于项目之外。输入必须是可读取的普通 UTF-8 文件；空文件清空正文，`-` 仅表示名为 `-` 的文件，不读取 stdin。不能把目标文章本身（含指向它的链接）作为正文输入。
+更新至少提供 `--title`、`--body-file` 或 `--status`。标题去除首尾空白后必须为非空单行文本。正文输入路径相对于调用命令的当前目录解析，与 `--project` 无关，可以位于项目之外。输入必须是可读取的普通 UTF-8 文件；空文件清空正文，`-` 仅表示名为 `-` 的文件，不读取 stdin。不能把目标文章本身（含指向它的链接）作为正文输入。
 
 CLI 不修剪正文空白、不转换换行或图片路径、不提取正文输入中的 frontmatter，也不修改输入文件。仅修改正文时保留原 frontmatter，必要时在原本位于文件末尾的结束分隔符后加入一行分隔换行。仅修改标题时保留原正文。组合修改一次提交，任一输入无效时整个请求失败。
 
@@ -114,4 +123,4 @@ pnpm pack --pack-destination artifacts
 YOHO_BLOG_PROJECT=/path/to/yoho-blog pnpm test
 ```
 
-兼容性测试显式使用本地内容模式，验证修改后的临时文章能被站点读取。PageHush 同步、文章新增与发布、Skill 管理及公开分发属于后续里程碑。
+兼容性测试显式使用本地内容模式，验证修改后的临时文章能被站点读取。PageHush 同步、文章新增、线上部署、Skill 管理及公开分发属于后续里程碑。

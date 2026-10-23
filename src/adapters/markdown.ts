@@ -114,8 +114,22 @@ export function replaceArticleTitle({
   path: string;
   title: string;
 }): string {
+  return replaceArticleMetadata({ source, path, field: "title", value: title });
+}
+
+export function replaceArticleMetadata({
+  source,
+  path,
+  field,
+  value,
+}: {
+  source: string;
+  path: string;
+  field: "title" | "description" | "tags" | "status" | "draft";
+  value: string | string[] | boolean;
+}): string {
   const { document, headerStart, headerEnd } = parseHeader({ source, path });
-  const node: unknown = document.get("title", true);
+  const node: unknown = document.get(field, true);
   if (node === undefined && isMap(document.contents)) {
     if (document.contents.flow && document.contents.range) {
       const closing = headerStart + document.contents.range[1] - 1;
@@ -123,21 +137,21 @@ export function replaceArticleTitle({
       return (
         prefix +
         (/,\s*$/.test(prefix) ? " " : ", ") +
-        `title: ${JSON.stringify(title)}` +
+        `${field}: ${JSON.stringify(value)}` +
         source.slice(closing)
       );
     }
     const newline = source.includes("\r\n") ? "\r\n" : "\n";
     return (
       source.slice(0, headerEnd) +
-      `title: ${JSON.stringify(title)}${newline}` +
+      `${field}: ${JSON.stringify(value)}${newline}` +
       source.slice(headerEnd)
     );
   }
   if ((!isScalar(node) && !isAlias(node)) || !node.range) {
     throw new AppError({
       code: "ARTICLE_INVALID",
-      message: `无法独立定位标题字段：${path}`,
+      message: `无法独立定位元数据字段：${path}`,
       exitCode: 3,
     });
   }
@@ -154,7 +168,7 @@ export function replaceArticleTitle({
   }
   return (
     source.slice(0, headerStart + start) +
-    JSON.stringify(title) +
+    JSON.stringify(value) +
     suffix +
     source.slice(headerStart + end)
   );
