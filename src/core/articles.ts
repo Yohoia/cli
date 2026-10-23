@@ -77,10 +77,18 @@ export type ArticleUpdate = {
 };
 export type VersionCondition =
   { kind: "any" } | { kind: "matches"; revision: ArticleRevision };
+export type ArticleDeletionPreview = Pick<
+  Article,
+  "id" | "path" | "revision"
+> & {
+  dryRun: true;
+  deleted: false;
+};
 
 export interface ArticleStore {
   list(): Promise<Article[]>;
   read(input: { id: ArticleId }): Promise<Article>;
+  readForDeletion(input: { id: ArticleId }): Promise<Article>;
   edit(input: {
     id: ArticleId;
     decide: (article: Article) => ArticleChanges;
@@ -90,6 +98,32 @@ export interface ArticleStore {
 export function createArticleService(store: ArticleStore) {
   return {
     show: store.read,
+    async previewDelete({
+      id,
+      condition,
+    }: {
+      id: ArticleId;
+      condition: VersionCondition;
+    }): Promise<ArticleDeletionPreview> {
+      const article = await store.readForDeletion({ id });
+      if (
+        condition.kind === "matches" &&
+        article.revision !== condition.revision
+      ) {
+        throw new AppError({
+          code: "ARTICLE_CONFLICT",
+          message: `文章版本已过期，请重新读取：${id}`,
+          exitCode: 3,
+        });
+      }
+      return {
+        id,
+        path: article.path,
+        revision: article.revision,
+        dryRun: true,
+        deleted: false,
+      };
+    },
     async update({
       id,
       changes,

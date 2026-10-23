@@ -318,4 +318,9 @@ test("frontmatter 结束分隔符位于文件末尾时仍可加入正文", async
   );
   assert.equal(updated.code, 0, updated.stdout);
   assert.equal(await readFile(file, "utf8"), source + "\n正文无结尾换行");
+  const shown = await runCli(["blog", "show", "entry", "--json"], {
+    cwd: project.root,
+  });
+  assert.equal(shown.code, 0, shown.stdout);
+  assert.equal(JSON.parse(shown.stdout).data.content, "正文无结尾换行");
 });

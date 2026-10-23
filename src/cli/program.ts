@@ -15,6 +15,7 @@ import {
 import type {
   Article,
   ArticleChanges,
+  ArticleDeletionPreview,
   ArticleSummary,
   ArticleUpdate,
 } from "../core/articles.js";
@@ -72,9 +73,15 @@ async function readBodyInput(path: string, signal: AbortSignal) {
     await file.close();
   }
 }
+const deleteOptionsSchema = optionsSchema.extend({
+  dryRun: z.literal(true, "此阶段仅支持 --dry-run 删除预览"),
+  yes: z.boolean().optional(),
+  ifMatch: articleRevisionSchema.optional(),
+});
 export type CommandResult =
   | { kind: "list"; data: { items: ArticleSummary[] } }
   | { kind: "show"; data: Article }
+  | { kind: "delete-preview"; data: ArticleDeletionPreview }
   | { kind: "update"; data: ArticleUpdate };
 
 export async function runProgram({
@@ -119,6 +126,28 @@ export async function runProgram({
       const options = optionsSchema.parse(command.optsWithGlobals());
       const service = await articlesForProject(options.project);
       result = { kind: "show", data: await service.show({ id }) };
+    });
+  blog
+    .command("delete")
+    .description("预览文章删除")
+    .argument("<id>", "文章标识")
+    .option("--dry-run", "只读预览，不删除文章")
+    .option("--yes", "显式授权；与 --dry-run 同时提供时仍只预览")
+    .option("--if-match <revision>", "仅当文章版本匹配时预览")
+    .action(async (rawId: unknown, _options: unknown, command: Command) => {
+      const id = articleIdSchema.parse(rawId);
+      const options = deleteOptionsSchema.parse(command.optsWithGlobals());
+      const service = await articlesForProject(options.project);
+      result = {
+        kind: "delete-preview",
+        data: await service.previewDelete({
+          id,
+          condition:
+            options.ifMatch === undefined
+              ? { kind: "any" }
+              : { kind: "matches", revision: options.ifMatch },
+        }),
+      };
     });
   blog
     .command("update")

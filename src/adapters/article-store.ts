@@ -1,5 +1,6 @@
 import {
   open,
+  lstat,
   readFile,
   readdir,
   realpath,
@@ -89,7 +90,55 @@ export function createFileArticleStore({
     return path;
   }
 
+  async function rejectLinkedDeletionPath(id: ArticleId): Promise<void> {
+    async function checkBoundary(path: string): Promise<void> {
+      try {
+        ensureContained(await realpath(path));
+      } catch (error) {
+        if (
+          !["ENOENT", "ENOTDIR", "ELOOP"].includes(systemErrorCode(error) ?? "")
+        )
+          throw error;
+      }
+    }
+    for (const extension of [".md", ".mdx"]) {
+      const target = join(root, id + extension);
+      await checkBoundary(target);
+      let path = root;
+      const segments = relative(root, target).split(sep);
+      for (const [index, segment] of segments.entries()) {
+        signal.throwIfAborted();
+        path = join(path, segment);
+        await checkBoundary(path);
+        let info;
+        try {
+          info = await lstat(path);
+        } catch (error) {
+          if (systemErrorCode(error) === "ENOENT") break;
+          throw error;
+        }
+        if (
+          info.isSymbolicLink() ||
+          (index < segments.length - 1 && !info.isDirectory())
+        ) {
+          throw new AppError({
+            code: "ARTICLE_INVALID",
+            message: `删除目标不能包含符号链接或非目录父路径：${path}`,
+            exitCode: 3,
+          });
+        }
+      }
+    }
+  }
+
   return {
+    async readForDeletion({ id }) {
+      signal.throwIfAborted();
+      await rejectLinkedDeletionPath(id);
+      const path = await resolveArticlePath(id);
+      const source = await readSource(path);
+      return { id, path, ...parseArticleSource({ source, path }) };
+    },
     async edit({ id, decide }) {
       signal.throwIfAborted();
       const path = await resolveArticlePath(id);
