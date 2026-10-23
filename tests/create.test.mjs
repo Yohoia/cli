@@ -78,6 +78,13 @@ test("日期校验拒绝自动滚动和无时区，并接受 UTC 日期及显式
     "2026-02-30T12:30:00Z",
     "2026-01-01T24:00:00Z",
     "2026-01-01T12:90:00Z",
+    "2026-02-30T09:30+08:00",
+    "2026-10-23T09:30",
+    "2026-10-23T24:00+08:00",
+    "2026-10-23T09:60+08:00",
+    "2026-10-23T09:30:60.123456+08:00",
+    "2026-10-23T09:30+24:00",
+    "2026-10-23T09:30+08:60",
     "October 23, 2026",
   ]) {
     const result = await runCli(
@@ -114,6 +121,52 @@ test("日期校验拒绝自动滚动和无时区，并接受 UTC 日期及显式
   assert.equal(data.content, "");
   assert.deepEqual(data.metadata.tags, []);
   assert.equal(data.path, join(project.content, "offset.md"));
+});
+
+test("创建接受带时区的分钟精度时间并转换为 UTC", async (t) => {
+  const project = await fixture(t);
+  const created = await runCli(
+    [
+      "blog",
+      "create",
+      "minute",
+      ...required,
+      "--published-at",
+      "2026-10-23T09:30+08:00",
+      "--json",
+    ],
+    { cwd: project.root },
+  );
+  assert.equal(created.code, 0, created.stdout);
+  const data = JSON.parse(created.stdout).data;
+  assert.equal(data.metadata.publishedAt, "2026-10-23T01:30:00.000Z");
+  const shown = await runCli(["blog", "show", "minute", "--json"], {
+    cwd: project.root,
+  });
+  assert.deepEqual(JSON.parse(shown.stdout).data, data);
+});
+
+test("创建接受超过毫秒精度的带时区时间并保留可表示的毫秒", async (t) => {
+  const project = await fixture(t);
+  const created = await runCli(
+    [
+      "blog",
+      "create",
+      "fraction",
+      ...required,
+      "--published-at",
+      "2026-10-23T09:30:00.123456+08:00",
+      "--json",
+    ],
+    { cwd: project.root },
+  );
+  assert.equal(created.code, 0, created.stdout);
+  const data = JSON.parse(created.stdout).data;
+  assert.equal(data.metadata.publishedAt, "2026-10-23T01:30:00.123Z");
+  const shown = await runCli(["blog", "show", "fraction", "--json"], {
+    cwd: project.root,
+  });
+  assert.deepEqual(JSON.parse(shown.stdout).data, data);
 });
 
 test("已有任一扩展名、损坏文章、目录与歧义均不可覆盖", async (t) => {
