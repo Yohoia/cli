@@ -90,6 +90,10 @@ export type ArticleDeletionPreview = Pick<
   dryRun: true;
   deleted: false;
 };
+export type ArticleDeletion = Pick<Article, "id" | "path" | "revision"> & {
+  dryRun: false;
+  deleted: true;
+};
 
 export type ArticleCreation = {
   id: ArticleId;
@@ -106,6 +110,10 @@ export interface ArticleStore {
   list(): Promise<Article[]>;
   read(input: { id: ArticleId }): Promise<Article>;
   readForDeletion(input: { id: ArticleId }): Promise<Article>;
+  remove(input: {
+    id: ArticleId;
+    check: (article: Article) => void;
+  }): Promise<ArticleDeletion>;
   edit(input: {
     id: ArticleId;
     decide: (article: Article) => ArticleChanges;
@@ -116,6 +124,29 @@ export function createArticleService(store: ArticleStore) {
   return {
     show: store.read,
     create: store.create,
+    async delete({
+      id,
+      condition,
+    }: {
+      id: ArticleId;
+      condition: VersionCondition;
+    }): Promise<ArticleDeletion> {
+      return store.remove({
+        id,
+        check: (article) => {
+          if (
+            condition.kind === "matches" &&
+            article.revision !== condition.revision
+          ) {
+            throw new AppError({
+              code: "ARTICLE_CONFLICT",
+              message: `文章版本已过期，请重新读取：${id}`,
+              exitCode: 3,
+            });
+          }
+        },
+      });
+    },
     async previewDelete({
       id,
       condition,

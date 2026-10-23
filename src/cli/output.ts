@@ -12,6 +12,8 @@ export function renderText(result: CommandResult): string {
       return `${result.data.changed ? "已修改" : "未修改"} ${result.data.id}：${result.data.title}\n版本：${result.data.revision}\n`;
     case "delete-preview":
       return `删除预览（尚未删除） ${result.data.id}\n${result.data.path}\n版本：${result.data.revision}\n`;
+    case "delete":
+      return `已删除 ${result.data.id}\n${result.data.path}\n版本：${result.data.revision}\n`;
     default: {
       const exhaustive: never = result;
       return exhaustive;

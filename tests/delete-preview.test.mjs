@@ -116,7 +116,7 @@ test("预览校验文章版本，未指定预览模式时不会交互或删除",
   );
   assert.equal(stale.code, 3, stale.stdout);
   assert.equal(JSON.parse(stale.stdout).error.code, "ARTICLE_CONFLICT");
-  for (const flags of [[], ["--yes"], ["--dry-run", "--if-match", ""]]) {
+  for (const flags of [[], ["--dry-run", "--if-match", ""]]) {
     const result = await runCli(
       ["blog", "delete", "article", "--json", ...flags],
       { cwd: project.root },

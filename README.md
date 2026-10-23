@@ -1,6 +1,6 @@
 # Yoho CLI
 
-通过终端或本地产品管理现有博客的 Markdown、MDX 文章。当前支持创建草稿、列出文章、查看完整文章和修改标题、正文、描述、标签和文章状态。
+通过终端或本地产品管理现有博客的 Markdown、MDX 文章。支持创建草稿、列出和查看文章、修改标题和正文及元数据、调整状态、预览和执行删除。
 
 ## 安装
 
@@ -50,7 +50,7 @@ yoho blog create nested/component --title '组件文章' --description '示例' 
 
 新文章明确为 `status=draft`、`draft=true`、`language=zh`，不会自动写入 `updatedAt`。子目录可自动创建，但不会初始化博客。Markdown 与 MDX 共用文章标识；任一扩展名已占用时返回 `ARTICLE_ALREADY_EXISTS`，已有两个候选时返回 `ARTICLE_ID_AMBIGUOUS`，损坏原文也不会被覆盖。创建路径内的符号链接会被拒绝。
 
-创建返回与 `show` 一致的 `id`、`path`、`metadata`、`content` 和 `revision`。创建与更新共享文章锁，提交以完整暂存内容原子发布且不覆盖现有目标；提交前失败或取消会清理暂存和锁，允许保留新建的空父目录。
+创建返回与 `show` 一致的 `id`、`path`、`metadata`、`content` 和 `revision`。创建、更新与实际删除共享文章锁。创建以完整暂存内容原子发布且不覆盖现有目标；提交前失败或取消会清理暂存和锁，允许保留新建的空父目录。
 
 ## 文章状态
 
@@ -86,7 +86,7 @@ yoho blog update nested/article --title '新的标题' --if-match 'REVISION_FROM
 
 版本过期时返回 `ARTICLE_CONFLICT`，文件保持当前内容。并发 CLI 更新使用文章锁，将版本检查和写入放在同一次操作中。未传 `--if-match` 时，CLI 基于当前文件只修改指定字段。
 
-## 删除预览
+## 删除文章
 
 删除前可以核对目标文章、实际位置与当前版本：
 
@@ -95,9 +95,19 @@ yoho blog delete nested/article --dry-run
 yoho blog delete nested/article --dry-run --if-match 'REVISION_FROM_SHOW' --json
 ```
 
-预览是只读操作，不创建锁、不修改文章或目录。JSON 结果包含 `id`、`path`、`revision`、`dryRun=true` 和 `deleted=false`；文本明确标记尚未删除。`--yes` 与 `--dry-run` 同时使用仍只执行预览。本阶段未接通实际删除，省略 `--dry-run` 会直接报参数错误，无需交互。
+预览是只读操作，不创建锁、不修改文章或目录。JSON 结果包含 `id`、`path`、`revision`、`dryRun=true` 和 `deleted=false`；文本明确标记尚未删除。`--yes` 与 `--dry-run` 同时使用仍只执行预览。
 
 预览会验证目标文章及可选的文章版本，拒绝损坏、歧义、越界或包含符号链接的删除路径。它不预留目标；之后实际删除时，调用方需将预览得到的版本传给 `--if-match`，才能确保删除的仍是预览时的文章。
+
+核对目标后，使用 `--yes` 执行删除。CLI 不提供回收站、备份或恢复：
+
+```bash
+yoho blog delete nested/article --yes --if-match 'REVISION_FROM_PREVIEW' --json
+```
+
+实际删除必须提供 `--yes`，否则返回参数错误，不等待确认输入。删除只移除目标文章，保留父目录、图片、附件与其他文章。成功结果包含 `id`、`path`、被删除文章的 `revision`、`dryRun=false` 和 `deleted=true`。此后查看或重复删除返回 `ARTICLE_NOT_FOUND`。
+
+删除在文章锁内检查版本、重读内容并重新校验路径。版本过期返回 `ARTICLE_CONFLICT`，保留当前文章。未传 `--if-match` 时基于当前文章删除。`--yes` 不绕过文章数据、路径或版本检查，也不允许强制删除损坏文章。提交前错误或取消保留原文；锁协调 CLI 进程，不能阻止外部编辑器在最终检查后写入。
 
 | 退出码 | 含义                             |
 | ------ | -------------------------------- |
