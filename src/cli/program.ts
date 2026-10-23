@@ -42,7 +42,8 @@ const updateOptionsSchema = optionsSchema
       options.bodyFile !== undefined ||
       options.description !== undefined ||
       options.tag !== undefined ||
-      options.clearTags,
+      options.clearTags ||
+      options.status !== undefined,
     "至少提供一项文章内容更新",
   )
   .refine(
@@ -242,7 +243,7 @@ export async function runProgram({
     });
   blog
     .command("update")
-    .description("修改文章标题、正文、描述或标签")
+    .description("修改文章标题、正文、描述、标签或状态")
     .argument("<id>", "文章标识")
     .option("--title <title>", "新标题")
     .option("--description <description>", "新描述，允许空字符串")
@@ -253,6 +254,7 @@ export async function runProgram({
     )
     .option("--clear-tags", "清空全部标签")
     .option("--body-file <path>", "UTF-8 正文输入文件")
+    .option("--status <status>", "设为 draft、published 或 archived")
     .option("--if-match <revision>", "仅当文章版本匹配时更新")
     .action(async (rawId: unknown, _options: unknown, command: Command) => {
       const id = articleIdSchema.parse(rawId);
@@ -269,6 +271,8 @@ export async function runProgram({
         });
       if (options.tag !== undefined || options.clearTags)
         requested.push({ kind: "tags", tags: options.tag ?? [] });
+      if (options.status !== undefined)
+        requested.push({ kind: "status", status: options.status });
       const [first, ...rest] = requested;
       if (first === undefined) {
         throw new AppError({

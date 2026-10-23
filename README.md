@@ -1,6 +1,6 @@
 # Yoho CLI
 
-通过终端或本地产品管理现有博客的 Markdown、MDX 文章。当前支持创建草稿、列出文章、查看完整文章和修改标题、正文、描述和标签。
+通过终端或本地产品管理现有博客的 Markdown、MDX 文章。当前支持创建草稿、列出文章、查看完整文章和修改标题、正文、描述、标签和文章状态。
 
 ## 安装
 
@@ -26,6 +26,7 @@ yoho blog update nested/article --body-file ./article-body.md
 yoho blog update nested/article --title '新的文章标题' --body-file ./article-body.md
 yoho blog update nested/article --description '新的文章描述' --tag TypeScript --tag '命令行'
 yoho blog update nested/article --clear-tags
+yoho blog update nested/article --status published
 ```
 
 从其他目录运行时，通过 `--project` 指定博客项目：
@@ -50,6 +51,14 @@ yoho blog create nested/component --title '组件文章' --description '示例' 
 新文章明确为 `status=draft`、`draft=true`、`language=zh`，不会自动写入 `updatedAt`。子目录可自动创建，但不会初始化博客。Markdown 与 MDX 共用文章标识；任一扩展名已占用时返回 `ARTICLE_ALREADY_EXISTS`，已有两个候选时返回 `ARTICLE_ID_AMBIGUOUS`，损坏原文也不会被覆盖。创建路径内的符号链接会被拒绝。
 
 创建返回与 `show` 一致的 `id`、`path`、`metadata`、`content` 和 `revision`。创建与更新共享文章锁，提交以完整暂存内容原子发布且不覆盖现有目标；提交前失败或取消会清理暂存和锁，允许保留新建的空父目录。
+
+## 文章状态
+
+`update --status` 接受 `draft`、`published` 或 `archived`，可以与标题和正文一起提交。设置草稿时同时写入 `status=draft`、`draft=true`；已发布为 `status=published`、`draft=false`；归档为 `status=archived`、`draft=true`。未提供状态参数时保留原始状态和草稿标记。
+
+同状态但草稿标记不一致时会纠正。按读取默认值解释后两个字段已经满足目标时不补写默认字段，返回 `changed=false`，保留版本和修改时间。状态更新同样支持 `--if-match`，且不修改日期、正文、图片引用或权限。
+
+已发布表示博客下一次读取本地内容时满足公开展示条件。CLI 不执行 Git 操作、同步、构建或部署，不增加定时发布；管理列表仍包含全部状态。
 
 ## 程序调用
 
@@ -101,11 +110,11 @@ yoho blog delete nested/article --dry-run --if-match 'REVISION_FROM_SHOW' --json
 
 ## 内容保护
 
-更新至少提供 `--title`、`--body-file`、`--description`、`--tag` 或 `--clear-tags` 中的一项。标题去除首尾空白后必须为非空单行文本。正文输入路径相对于调用命令的当前目录解析，与 `--project` 无关，可以位于项目之外。输入必须是可读取的普通 UTF-8 文件；空文件清空正文，`-` 仅表示名为 `-` 的文件，不读取 stdin。不能把目标文章本身（含指向它的链接）作为正文输入。
+更新至少提供 `--title`、`--body-file`、`--description`、`--tag`、`--clear-tags` 或 `--status` 中的一项。标题去除首尾空白后必须为非空单行文本。正文输入路径相对于调用命令的当前目录解析，与 `--project` 无关，可以位于项目之外。输入必须是可读取的普通 UTF-8 文件；空文件清空正文，`-` 仅表示名为 `-` 的文件，不读取 stdin。不能把目标文章本身（含指向它的链接）作为正文输入。
 
 CLI 不修剪正文空白、不转换换行或图片路径、不提取正文输入中的 frontmatter，也不修改输入文件。仅修改正文时保留原 frontmatter，必要时在原本位于文件末尾的结束分隔符后加入一行分隔换行。仅修改标题时保留原正文。组合修改一次提交，任一输入无效时整个请求失败。
 
-描述按字符串原样保存，`--description ''` 可清空描述。每个 `--tag` 是一个完整标签，不按逗号拆分；去除标签首尾空白、拒绝空白标签，按首次出现顺序去重且区分大小写。提供标签会替换整组，`--clear-tags` 显式清空，与 `--tag` 互斥。未提供的描述和标签保持原样。标题、正文、描述与标签可组合为一次受锁保护的更新，任一字段失败时整篇文章不变。
+描述按字符串原样保存，`--description ''` 可清空描述。每个 `--tag` 是一个完整标签，不按逗号拆分；去除标签首尾空白、拒绝空白标签，按首次出现顺序去重且区分大小写。提供标签会替换整组，`--clear-tags` 显式清空，与 `--tag` 互斥。未提供的描述和标签保持原样。标题、正文、描述、标签与状态可组合为一次受锁保护的更新，任一字段失败时整篇文章不变。
 
 未知字段、日期、注释和未指定内容保持原样。相同正文、描述、规范化后相同标题及相同有序标签列表不写文件，返回 `changed=false`，版本和修改时间保持不变。CLI 不自动更新文章更新时间。
 
@@ -133,4 +142,4 @@ pnpm pack --pack-destination artifacts
 YOHO_BLOG_PROJECT=/path/to/yoho-blog pnpm test
 ```
 
-兼容性测试显式使用本地内容模式，验证修改后的临时文章能被站点读取。PageHush 同步、Skill 管理及公开分发属于后续里程碑。
+兼容性测试显式使用本地内容模式，验证修改后的临时文章能被站点读取。PageHush 同步、线上部署、Skill 管理及公开分发属于后续里程碑。
