@@ -23,7 +23,7 @@ import {
   sep,
 } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { articleIdSchema } from "../core/articles.js";
+import { articleIdSchema, metadataForArticleStatus } from "../core/articles.js";
 import type { Article, ArticleId, ArticleStore } from "../core/articles.js";
 import { AppError, systemErrorCode } from "../core/errors.js";
 import {
@@ -317,8 +317,10 @@ export function createFileArticleStore({
                 });
               break;
             case "status": {
-              expectedMetadata.status = change.status;
-              expectedMetadata.draft = change.status !== "published";
+              Object.assign(
+                expectedMetadata,
+                metadataForArticleStatus(change.status),
+              );
               if (
                 current.metadata.status !== expectedMetadata.status ||
                 current.metadata.draft !== expectedMetadata.draft
