@@ -17,6 +17,7 @@ import { AppError, systemErrorCode } from "../core/errors.js";
 import {
   parseArticleSource,
   replaceArticleTitle,
+  replaceArticleMetadata,
   replaceArticleBody,
 } from "./markdown.js";
 import { acquireArticleLock } from "./article-lock.js";
@@ -158,13 +159,35 @@ export function createFileArticleStore({
         const changes = decide(current);
         let updated = source;
         let title = current.metadata.title;
+        const expectedMetadata = { ...current.metadata };
         let content = current.content;
         for (const change of changes) {
           switch (change.kind) {
             case "title":
               title = change.title;
+              expectedMetadata.title = title;
               if (title !== current.metadata.title)
                 updated = replaceArticleTitle({ source: updated, path, title });
+              break;
+            case "tags":
+              expectedMetadata.tags = change.tags;
+              if (!isDeepStrictEqual(change.tags, current.metadata.tags))
+                updated = replaceArticleMetadata({
+                  source: updated,
+                  path,
+                  field: "tags",
+                  value: change.tags,
+                });
+              break;
+            case "description":
+              expectedMetadata.description = change.description;
+              if (change.description !== current.metadata.description)
+                updated = replaceArticleMetadata({
+                  source: updated,
+                  path,
+                  field: "description",
+                  value: change.description,
+                });
               break;
             case "body": {
               const [inputStat, targetStat] = await Promise.all([
@@ -200,7 +223,7 @@ export function createFileArticleStore({
           return { id, title, revision: current.revision, changed: false };
         const next = parseArticleSource({ source: updated, path });
         if (
-          !isDeepStrictEqual(next.metadata, { ...current.metadata, title }) ||
+          !isDeepStrictEqual(next.metadata, expectedMetadata) ||
           next.content !== content
         ) {
           throw new AppError({

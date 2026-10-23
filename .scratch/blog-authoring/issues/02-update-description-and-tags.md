@@ -4,7 +4,7 @@
 
 **Blocked by:** 01: 通过文件更新文章正文。
 
-**Status:** ready-for-agent
+**Status:** claimed
 
 **Spec:** [第二个里程碑规格](../spec.md)。
 
