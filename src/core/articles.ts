@@ -105,6 +105,28 @@ export type ArticleCreation = {
   tags: string[];
 };
 
+export function metadataForArticleStatus(
+  status: ArticleStatus,
+): Pick<ArticleMetadata, "status" | "draft"> {
+  return { status, draft: status !== "published" };
+}
+
+function checkArticleVersion({
+  article,
+  condition,
+}: {
+  article: Article;
+  condition: VersionCondition;
+}): void {
+  if (condition.kind === "matches" && article.revision !== condition.revision) {
+    throw new AppError({
+      code: "ARTICLE_CONFLICT",
+      message: `文章版本已过期，请重新读取：${article.id}`,
+      exitCode: 3,
+    });
+  }
+}
+
 export interface ArticleStore {
   create(input: ArticleCreation): Promise<Article>;
   list(): Promise<Article[]>;
@@ -134,16 +156,7 @@ export function createArticleService(store: ArticleStore) {
       return store.remove({
         id,
         check: (article) => {
-          if (
-            condition.kind === "matches" &&
-            article.revision !== condition.revision
-          ) {
-            throw new AppError({
-              code: "ARTICLE_CONFLICT",
-              message: `文章版本已过期，请重新读取：${id}`,
-              exitCode: 3,
-            });
-          }
+          checkArticleVersion({ article, condition });
         },
       });
     },
@@ -155,16 +168,7 @@ export function createArticleService(store: ArticleStore) {
       condition: VersionCondition;
     }): Promise<ArticleDeletionPreview> {
       const article = await store.readForDeletion({ id });
-      if (
-        condition.kind === "matches" &&
-        article.revision !== condition.revision
-      ) {
-        throw new AppError({
-          code: "ARTICLE_CONFLICT",
-          message: `文章版本已过期，请重新读取：${id}`,
-          exitCode: 3,
-        });
-      }
+      checkArticleVersion({ article, condition });
       return {
         id,
         path: article.path,
@@ -185,16 +189,7 @@ export function createArticleService(store: ArticleStore) {
       return store.edit({
         id,
         decide: (article) => {
-          if (
-            condition.kind === "matches" &&
-            article.revision !== condition.revision
-          ) {
-            throw new AppError({
-              code: "ARTICLE_CONFLICT",
-              message: `文章版本已过期，请重新读取：${id}`,
-              exitCode: 3,
-            });
-          }
+          checkArticleVersion({ article, condition });
           return changes;
         },
       });
