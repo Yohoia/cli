@@ -6,6 +6,11 @@ const errorSchema = z.object({
   code: z.string().optional(),
   message: z.string().optional(),
 });
+const articleDataErrorCodes = new Set([
+  "ARTICLE_FIELDS_REQUIRED",
+  "PUBLISH_FIELDS_REQUIRED",
+  "ASSET_NOT_READY",
+]);
 
 export function remoteResponse<T>(schema: z.ZodType<T>, response: unknown): T {
   const result = schema.safeParse(response);
@@ -26,6 +31,11 @@ const recoveryGuidance: Record<string, string> = {
   REVISION_REQUIRED:
     "缺少文章版本，请先运行 yoho blog show <id>，再提供 --if-match",
   ARTICLE_NOT_FOUND: "文章不存在或已被删除，请用 yoho blog list 核对文章标识",
+  ARTICLE_FIELDS_REQUIRED: "文章标题、描述或正文无效，请修正文档后重新上传",
+  PUBLISH_FIELDS_REQUIRED:
+    "文章缺少发布所需的标题、描述或正文，请在 PageHush 网页补全后重新查看文章版本再发布",
+  ASSET_NOT_READY:
+    "文章引用的素材不存在或尚未就绪，请核对图片地址和原操作结果后再上传",
   REQUEST_CONFLICT:
     "同一请求编号对应的内容或目标不一致，请查询原操作结果并核对输入",
   OPERATION_UNKNOWN:
@@ -83,7 +93,8 @@ export class RemoteClient {
               : response.status === 409 ||
                   response.status === 412 ||
                   response.status === 404 ||
-                  response.status === 422
+                  response.status === 422 ||
+                  (response.status === 400 && articleDataErrorCodes.has(code))
                 ? 3
                 : response.status === 400 || response.status === 428
                   ? 2

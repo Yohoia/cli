@@ -73,6 +73,79 @@ test("installed CLI uploads repeated local inline images once and keeps Markdown
   assert.equal(anonymous.status, 401);
 });
 
+test("installed CLI preserves image labels containing code spans when replacing local destinations", async (t) => {
+  const api = await remoteFixture(t),
+    token = await api.device();
+  const proxy = await forwardingProxy(t, api.url);
+  const options = api.options(token);
+  options.env.YOHO_SERVER = proxy.url;
+  await writeFile(join(api.root, "pic.png"), PNG);
+  const source =
+    '# 图片说明\r\n\r\n说明正文。\r\n\r\n![`[`](pic.png "左括号")\r\n\r\n![` ] `](<pic.png>)\r\n\r\n![![内部](https://example.com/remote.png)](pic.png)\r\n\r\n![说明 \\[转义\\]](pic.png)\r\n';
+  const path = join(api.root, "labels.md");
+  await writeFile(path, source);
+  const created = await runCli(["blog", "create", path, "--json"], options);
+  assert.equal(created.code, 0, created.stdout + created.stderr);
+  const { article } = JSON.parse(created.stdout).data;
+  const urls = article.content.match(/\/v1\/assets\/[0-9a-f-]+\/content/g);
+  assert.equal(urls?.length, 4);
+  assert.equal(new Set(urls).size, 1);
+  assert.equal(article.content, source.replaceAll("pic.png", urls[0]));
+  assert.equal(
+    proxy.requests.filter(({ url }) => url.includes("/uploads/")).length,
+    1,
+  );
+  assert.equal(await readFile(path, "utf8"), source);
+  assert.deepEqual(await readFile(join(api.root, "pic.png")), PNG);
+});
+
+test("installed CLI rejects unsupported local HTML resource attributes before any HTTP request", async (t) => {
+  const api = await remoteFixture(t),
+    token = await api.device();
+  const proxy = await forwardingProxy(t, api.url);
+  const options = api.options(token);
+  options.env.YOHO_SERVER = proxy.url;
+  const resources = [
+    '<img srcset="./missing.png 1x, ./missing@2x.png 2x">',
+    '<picture><source srcset="https://example.com/remote.png 1x, ./missing.png 2x"></picture>',
+    '<video poster="/Users/example/private.png"></video>',
+    '<object data="./private.pdf"></object>',
+    '<img SRCSET="&#46;/missing.png 1x">',
+    '<svg><image xlink:href="./missing.png" /></svg>',
+    '<script src="./private.js"></script>',
+  ];
+  for (const [index, resource] of resources.entries()) {
+    const source = `# HTML 资源\n\n正文说明。\n\n${resource}\n`;
+    const path = join(api.root, `resource-${index}.md`);
+    await writeFile(path, source);
+    const result = await runCli(["blog", "create", path, "--json"], options);
+    assert.equal(result.code, 3, `${resource}: ${result.stdout}`);
+    assert.equal(JSON.parse(result.stdout).error.code, "ARTICLE_INVALID");
+    assert.equal(await readFile(path, "utf8"), source);
+    assert.equal(proxy.requests.length, 0);
+  }
+});
+
+test("installed CLI preserves remote HTML resources and resource examples without uploading images", async (t) => {
+  const api = await remoteFixture(t),
+    token = await api.device();
+  const proxy = await forwardingProxy(t, api.url);
+  const options = api.options(token);
+  options.env.YOHO_SERVER = proxy.url;
+  const source =
+    '# 保留 HTML\n\n正文说明。\n\n<img srcset="https://example.com/a,b.png 1x,https://example.com/large.png 2x">\n\n<video poster="https://example.com/poster.png"></video>\n\n<object data="https://example.com/file.pdf"></object>\n\n<!-- <img srcset="./comment.png 1x"> -->\n\n<pre><code><img src="./example.png" srcset="./example@2x.png 2x"></code></pre>\n\n```html\n<img srcset="./code.png 1x">\n```\n';
+  const path = join(api.root, "remote-html.md");
+  await writeFile(path, source);
+  const result = await runCli(["blog", "create", path, "--json"], options);
+  assert.equal(result.code, 0, result.stdout + result.stderr);
+  assert.equal(JSON.parse(result.stdout).data.article.content, source);
+  assert.equal(await readFile(path, "utf8"), source);
+  assert.deepEqual(
+    proxy.requests.map(({ method, url }) => ({ method, url })),
+    [{ method: "POST", url: "/v1/cli/articles" }],
+  );
+});
+
 test("all image inputs are checked before any upload and invalid images leave no article or assets", async (t) => {
   const api = await remoteFixture(t),
     token = await api.device(),

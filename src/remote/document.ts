@@ -5,6 +5,8 @@ import { parse as parseYaml } from "yaml";
 import { unified } from "unified";
 import remarkParse from "remark-parse";
 import type { Root, Nodes } from "mdast";
+import { parse, postprocess, preprocess } from "micromark";
+import { parseFragment, type DefaultTreeAdapterMap } from "parse5";
 import { z } from "zod";
 import { AppError } from "../core/errors.js";
 
@@ -36,47 +38,82 @@ type LocalImage = {
   bytes: Buffer;
   references: Replacement[];
 };
-function destination(content: string, node: Nodes): Replacement {
-  const start = node.position?.start.offset,
-    end = node.position?.end.offset;
-  if (start === undefined || end === undefined) invalid("无法定位图片引用");
-  const literal = content.slice(start, end);
-  let depth = 0,
-    index = 1;
-  for (; index < literal.length; index++) {
-    const character = literal[index];
-    if (character === "\\") {
-      index++;
-      continue;
-    }
-    if (character === "[") depth++;
-    if (character === "]" && --depth === 0) {
-      index += 2;
-      break;
+function imageDestinations(content: string): Map<number, Replacement> {
+  const destinations = new Map<number, Replacement>();
+  const parents: { type: "image" | "link"; start: number }[] = [];
+  const events = postprocess(
+    parse()
+      .document()
+      .write(preprocess()(content, undefined, true)),
+  );
+  for (const [phase, token] of events) {
+    if (token.type === "image" || token.type === "link") {
+      if (phase === "enter")
+        parents.push({ type: token.type, start: token.start.offset });
+      else parents.pop();
+    } else if (
+      phase === "enter" &&
+      token.type === "resourceDestinationString"
+    ) {
+      const parent = parents.at(-1);
+      if (parent?.type === "image")
+        destinations.set(parent.start, {
+          start: token.start.offset,
+          end: token.end.offset,
+        });
     }
   }
-  while (/\s/.test(literal[index] ?? "X")) index++;
-  const angle = literal[index] === "<";
-  if (angle) index++;
-  const from = index;
-  let parentheses = 0;
-  for (; index < literal.length; index++) {
-    const character = literal[index];
-    if (character === "\\") {
-      index++;
-      continue;
-    }
-    if (angle && character === ">") break;
-    if (!angle) {
+  return destinations;
+}
+
+function* srcsetUrls(value: string): Generator<string> {
+  let position = 0;
+  while (position < value.length) {
+    while (/[\t\n\f\r ,]/.test(value[position] ?? "X")) position++;
+    const start = position;
+    while (
+      position < value.length &&
+      !/[\t\n\f\r ]/.test(value[position] ?? "")
+    )
+      position++;
+    const url = value.slice(start, position);
+    if (!url) break;
+    yield url.replace(/,+$/, "");
+    if (url.endsWith(",")) continue;
+    let parentheses = 0;
+    while (position < value.length) {
+      const character = value[position++];
       if (character === "(") parentheses++;
-      if (character === ")") {
-        if (parentheses === 0) break;
-        parentheses--;
-      }
-      if (/\s/.test(character ?? "X") && parentheses === 0) break;
+      else if (character === ")") parentheses = Math.max(0, parentheses - 1);
+      else if (character === "," && parentheses === 0) break;
     }
   }
-  return { start: start + from, end: start + index };
+}
+
+function validateHtmlResources(html: string) {
+  function validate(url: string) {
+    const value = url.trim();
+    if (value && !isRemoteResource(value) && !value.startsWith("#"))
+      invalid(`不支持的本地 HTML 资源：${value}`);
+  }
+  function visit(node: DefaultTreeAdapterMap["node"]) {
+    if ("tagName" in node) {
+      for (const attribute of node.attrs) {
+        if (
+          ["src", "href"].includes(attribute.name) ||
+          (attribute.name === "poster" && node.tagName === "video") ||
+          (attribute.name === "data" && node.tagName === "object")
+        )
+          validate(attribute.value);
+        if (["srcset", "imagesrcset"].includes(attribute.name))
+          for (const url of srcsetUrls(attribute.value)) validate(url);
+      }
+      if (["pre", "code", "script", "style", "template"].includes(node.tagName))
+        return;
+    }
+    if ("childNodes" in node) node.childNodes.forEach(visit);
+  }
+  visit(parseFragment(html));
 }
 async function localImages(
   tree: Root,
@@ -86,6 +123,7 @@ async function localImages(
 ): Promise<LocalImage[]> {
   const images = new Map<string, LocalImage>();
   const local: Extract<Nodes, { type: "image" }>[] = [];
+  const html: string[] = [];
   walk(tree, (node) => {
     if (
       node.type === "image" &&
@@ -100,15 +138,12 @@ async function localImages(
       !/^(mailto|tel):/i.test(node.url)
     )
       invalid(`不支持的本地资源引用：${node.url}`);
-    if (node.type === "html")
-      for (const match of node.value.matchAll(
-        /(?:src|href)\s*=\s*(?:["']([^"']+)["']|([^\s>]+))/gi,
-      )) {
-        const url = match[1] ?? match[2];
-        if (url && !isRemoteResource(url) && !url.startsWith("#"))
-          invalid(`不支持的本地 HTML 资源：${url}`);
-      }
+    if (node.type === "html") html.push(node.value);
   });
+  validateHtmlResources(html.join("\n"));
+  const destinations = local.length
+    ? imageDestinations(content)
+    : new Map<number, Replacement>();
   for (const node of local) {
     if (/^[a-z][a-z0-9+.-]*:/i.test(node.url))
       invalid(`不支持的图片地址：${node.url}`);
@@ -121,7 +156,9 @@ async function localImages(
     const path = await realpath(resolve(dirname(documentPath), decoded)).catch(
       () => invalid(`图片不存在：${node.url}`),
     );
-    const reference = destination(content, node);
+    const start = node.position?.start.offset;
+    const reference = start === undefined ? undefined : destinations.get(start);
+    if (!reference) invalid("无法定位图片引用");
     const existing = images.get(path);
     if (existing) {
       existing.references.push(reference);
