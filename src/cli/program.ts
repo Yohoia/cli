@@ -3,15 +3,41 @@ import { z } from "zod";
 import manifest from "../../package.json" with { type: "json" };
 import { resolveContentRoot } from "../adapters/project.js";
 import { createFileArticleStore } from "../adapters/article-store.js";
-import { articleIdSchema, articleStatusSchema, articleTitleSchema, createArticleService } from "../core/articles.js";
-import type { Article, ArticleSummary, ArticleUpdate } from "../core/articles.js";
+import {
+  articleIdSchema,
+  articleRevisionSchema,
+  articleStatusSchema,
+  articleTitleSchema,
+  createArticleService,
+} from "../core/articles.js";
+import type {
+  Article,
+  ArticleSummary,
+  ArticleUpdate,
+} from "../core/articles.js";
 import { AppError } from "../core/errors.js";
 
-const optionsSchema = z.object({ project: z.string().optional(), json: z.boolean().default(false), status: articleStatusSchema.optional() });
-const updateOptionsSchema = optionsSchema.extend({ title: articleTitleSchema });
-export type CommandResult = { kind: "list"; data: { items: ArticleSummary[] } } | { kind: "show"; data: Article } | { kind: "update"; data: ArticleUpdate };
+const optionsSchema = z.object({
+  project: z.string().optional(),
+  json: z.boolean().default(false),
+  status: articleStatusSchema.optional(),
+});
+const updateOptionsSchema = optionsSchema.extend({
+  title: articleTitleSchema,
+  ifMatch: articleRevisionSchema.optional(),
+});
+export type CommandResult =
+  | { kind: "list"; data: { items: ArticleSummary[] } }
+  | { kind: "show"; data: Article }
+  | { kind: "update"; data: ArticleUpdate };
 
-export async function runProgram({ argv, signal }: { argv: string[]; signal: AbortSignal }): Promise<CommandResult | undefined> {
+export async function runProgram({
+  argv,
+  signal,
+}: {
+  argv: string[];
+  signal: AbortSignal;
+}): Promise<CommandResult | undefined> {
   let result: CommandResult | undefined;
   const program = new Command()
     .name("yoho")
@@ -22,39 +48,78 @@ export async function runProgram({ argv, signal }: { argv: string[]; signal: Abo
     .configureOutput({ writeErr: () => undefined })
     .exitOverride();
   const blog = program.command("blog").description("管理博客文章");
-  blog.command("list").description("列出文章")
+  blog
+    .command("list")
+    .description("列出文章")
     .option("--status <status>", "按 draft、published 或 archived 状态筛选")
     .action(async (_options: unknown, command: Command) => {
       const options = optionsSchema.parse(command.optsWithGlobals());
-      const root = await resolveContentRoot({ cwd: process.cwd(), project: options.project });
-      const service = createArticleService(createFileArticleStore({ root, signal }));
-      result = { kind: "list", data: { items: await service.list(options.status) } };
+      const root = await resolveContentRoot({
+        cwd: process.cwd(),
+        project: options.project,
+      });
+      const service = createArticleService(
+        createFileArticleStore({ root, signal }),
+      );
+      result = {
+        kind: "list",
+        data: { items: await service.list(options.status) },
+      };
     });
-  blog.command("show").description("查看完整文章")
+  blog
+    .command("show")
+    .description("查看完整文章")
     .argument("<id>", "文章标识")
     .action(async (rawId: unknown, _options: unknown, command: Command) => {
       const id = articleIdSchema.parse(rawId);
       const options = optionsSchema.parse(command.optsWithGlobals());
-      const root = await resolveContentRoot({ cwd: process.cwd(), project: options.project });
-      const service = createArticleService(createFileArticleStore({ root, signal }));
+      const root = await resolveContentRoot({
+        cwd: process.cwd(),
+        project: options.project,
+      });
+      const service = createArticleService(
+        createFileArticleStore({ root, signal }),
+      );
       result = { kind: "show", data: await service.show({ id }) };
     });
-  blog.command("update").description("修改文章标题")
+  blog
+    .command("update")
+    .description("修改文章标题")
     .argument("<id>", "文章标识")
     .requiredOption("--title <title>", "新标题")
+    .option("--if-match <revision>", "仅当文章版本匹配时更新")
     .action(async (rawId: unknown, _options: unknown, command: Command) => {
       const id = articleIdSchema.parse(rawId);
       const options = updateOptionsSchema.parse(command.optsWithGlobals());
-      const root = await resolveContentRoot({ cwd: process.cwd(), project: options.project });
-      const service = createArticleService(createFileArticleStore({ root, signal }));
-      result = { kind: "update", data: await service.update({ id, title: options.title }) };
+      const root = await resolveContentRoot({
+        cwd: process.cwd(),
+        project: options.project,
+      });
+      const service = createArticleService(
+        createFileArticleStore({ root, signal }),
+      );
+      result = {
+        kind: "update",
+        data: await service.update({
+          id,
+          title: options.title,
+          condition:
+            options.ifMatch === undefined
+              ? { kind: "any" }
+              : { kind: "matches", revision: options.ifMatch },
+        }),
+      };
     });
   try {
     await program.parseAsync(argv, { from: "user" });
   } catch (error) {
     if (error instanceof CommanderError) {
       if (error.exitCode === 0) return undefined;
-      throw new AppError({ code: "INVALID_ARGUMENT", message: error.message, exitCode: 2 });
+      throw new AppError({
+        code: "INVALID_ARGUMENT",
+        message: error.message,
+        exitCode: 2,
+      });
     }
     throw error;
   }

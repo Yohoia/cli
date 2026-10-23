@@ -11,10 +11,27 @@ let installation;
 async function installPackage() {
   const root = await mkdtemp(join(tmpdir(), "yoho-install-"));
   try {
-    const { stdout } = await execute("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", root], { cwd: resolve("."), maxBuffer: 4_000_000 });
+    const { stdout } = await execute(
+      "npm",
+      ["pack", "--ignore-scripts", "--json", "--pack-destination", root],
+      { cwd: resolve("."), maxBuffer: 4_000_000 },
+    );
     const [packed] = JSON.parse(stdout);
     const prefix = join(root, "installed");
-    await execute("npm", ["install", "--prefix", prefix, "--offline", "--ignore-scripts", "--no-audit", "--no-fund", join(root, packed.filename)], { maxBuffer: 4_000_000 });
+    await execute(
+      "npm",
+      [
+        "install",
+        "--prefix",
+        prefix,
+        "--offline",
+        "--ignore-scripts",
+        "--no-audit",
+        "--no-fund",
+        join(root, packed.filename),
+      ],
+      { maxBuffer: 4_000_000 },
+    );
     return { root, bin: join(prefix, "node_modules", ".bin", "yoho") };
   } catch (error) {
     await rm(root, { recursive: true, force: true });
@@ -44,13 +61,20 @@ export async function startCli(args, { cwd, env = {} }) {
   const result = new Promise((resolveResult, reject) => {
     let stdout = "";
     let stderr = "";
-    child.stdout.setEncoding("utf8").on("data", chunk => { stdout += chunk; });
-    child.stderr.setEncoding("utf8").on("data", chunk => { stderr += chunk; });
+    child.stdout.setEncoding("utf8").on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.setEncoding("utf8").on("data", (chunk) => {
+      stderr += chunk;
+    });
     const timeout = setTimeout(() => {
       child.kill("SIGKILL");
       reject(new Error("CLI did not finish within 10 seconds"));
     }, 10_000);
-    child.once("error", error => { clearTimeout(timeout); reject(error); });
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
     child.once("close", (code, signal) => {
       clearTimeout(timeout);
       resolveResult({ code, signal, stdout, stderr });
@@ -80,6 +104,12 @@ export async function fixture(t) {
   };
 }
 
-export function article({ title = "原始标题", status = "published", date = "2026-10-01", extra = "", body = "\n# 正文标题\n\n文章正文。\n" } = {}) {
+export function article({
+  title = "原始标题",
+  status = "published",
+  date = "2026-10-01",
+  extra = "",
+  body = "\n# 正文标题\n\n文章正文。\n",
+} = {}) {
   return `---\ntitle: ${title}\ndescription: Example\nstatus: ${status}\npublishedAt: ${date}\n${extra}---\n${body}`;
 }
