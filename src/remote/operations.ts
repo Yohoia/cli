@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { configDirectory } from "./config.js";
-import { RemoteClient } from "./http.js";
+import { RemoteClient, remoteResponse, remoteErrorMessage } from "./http.js";
 import { outcomeSchema, type OperationOutcome } from "./models.js";
 import { AppError } from "../core/errors.js";
 const common = {
@@ -68,16 +68,19 @@ export async function readOperation(
     });
   }
 }
-function completed(outcome: OperationOutcome) {
+function completed(outcome: OperationOutcome, cancelled: boolean) {
   if (outcome.status === "succeeded")
     return { requestId: outcome.requestId, ...outcome.result };
   if (outcome.status === "failed")
     throw new AppError({
       code: outcome.error.code.toUpperCase(),
-      message: outcome.error.message,
+      message: remoteErrorMessage(
+        outcome.error.code.toUpperCase(),
+        outcome.error.message,
+      ),
       exitCode: 3,
     });
-  throw unknownResult(outcome.requestId, false);
+  throw unknownResult(outcome.requestId, cancelled);
 }
 function unknownResult(id: string, cancelled: boolean) {
   return new AppError({
@@ -87,7 +90,8 @@ function unknownResult(id: string, cancelled: boolean) {
   });
 }
 export async function queryOperation(client: RemoteClient, id: string) {
-  return outcomeSchema.parse(
+  return remoteResponse(
+    outcomeSchema,
     await client.request(`/v1/cli/operations/${z.uuid().parse(id)}`),
   );
 }
@@ -114,7 +118,10 @@ export async function performOperation(
             record.kind === "create" ? payload : {},
             headers,
           );
-    return completed(outcomeSchema.parse(response));
+    return completed(
+      remoteResponse(outcomeSchema, response),
+      client.signal.aborted,
+    );
   } catch (error) {
     if (
       error instanceof AppError &&
@@ -122,22 +129,17 @@ export async function performOperation(
       !client.signal.aborted
     )
       throw error;
+    let recovered: OperationOutcome;
     try {
       const recoveryClient = new RemoteClient(
         client.server,
         AbortSignal.timeout(5000),
         client.token,
       );
-      return completed(await queryOperation(recoveryClient, record.requestId));
-    } catch (error) {
-      if (
-        error instanceof AppError &&
-        !["NETWORK_ERROR", "OPERATION_UNKNOWN", "RESULT_UNKNOWN"].includes(
-          error.code,
-        )
-      )
-        throw error;
+      recovered = await queryOperation(recoveryClient, record.requestId);
+    } catch {
       throw unknownResult(record.requestId, client.signal.aborted);
     }
+    return completed(recovered, client.signal.aborted);
   }
 }

@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { writeFile, readFile } from "node:fs/promises";
+import { writeFile, readFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
-import { remoteFixture, runCli } from "./remote-support.mjs";
+import { remoteFixture, runCli, forwardingProxy } from "./remote-support.mjs";
 
 test("installed CLI uploads a Markdown file as a draft without changing the source", async (t) => {
   const api = await remoteFixture(t);
@@ -94,4 +94,50 @@ test("installed CLI never executes non-YAML frontmatter as code", async (t) => {
   const result = await runCli(["blog", "create", path, "--json"], options);
   assert.equal(result.code, 3, result.stdout);
   await assert.rejects(readFile(marker), { code: "ENOENT" });
+});
+
+test("installed CLI rejects invalid UTF-8 and whitespace-only documents before any HTTP request", async (t) => {
+  const api = await remoteFixture(t),
+    token = await api.device();
+  const proxy = await forwardingProxy(t, api.url);
+  const options = api.options(token);
+  options.env.YOHO_SERVER = proxy.url;
+  for (const [name, bytes, message] of [
+    ["invalid.md", Buffer.from([0x23, 0x20, 0xff, 0xfe]), /UTF-8/],
+    ["whitespace.md", Buffer.from(" \n\t\r\n　\n"), /正文不能为空/],
+  ]) {
+    const path = join(api.root, name);
+    await writeFile(path, bytes);
+    const result = await runCli(["blog", "create", path, "--json"], options);
+    assert.equal(result.code, 3, result.stdout + result.stderr);
+    assert.equal(JSON.parse(result.stdout).error.code, "ARTICLE_INVALID");
+    assert.match(JSON.parse(result.stdout).error.message, message);
+    assert.deepEqual(await readFile(path), bytes);
+    assert.equal(proxy.requests.length, 0);
+  }
+});
+
+test("installed CLI resolves a relative Markdown path from the calling directory and preserves Chinese spaces", async (t) => {
+  const api = await remoteFixture(t),
+    token = await api.device();
+  const directory = join(api.root, "文章 目录");
+  await mkdir(directory);
+  const path = join(directory, "中文 草稿.md");
+  const source = "普通中文正文，标题来自文件名。\n";
+  await writeFile(path, source);
+  const result = await runCli(
+    ["blog", "create", "文章 目录/中文 草稿.md", "--json"],
+    api.options(token),
+  );
+  assert.equal(result.code, 0, result.stdout + result.stderr);
+  const article = JSON.parse(result.stdout).data.article;
+  assert.equal(article.title, "中文 草稿");
+  assert.equal(article.language, "zh");
+  assert.equal(article.content, source);
+  assert.equal(await readFile(path, "utf8"), source);
+  const fetched = await fetch(`${api.url}/v1/cli/articles/${article.id}`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(fetched.status, 200);
+  assert.equal((await fetched.json()).content, source);
 });

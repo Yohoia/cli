@@ -15,13 +15,21 @@ export async function remoteFixture(t) {
     process.platform === "darwin"
       ? join(root, "isolated.keychain-db")
       : undefined;
-  if (keychain)
+  if (keychain) {
+    const password = randomUUID();
     await execute("/usr/bin/security", [
       "create-keychain",
       "-p",
-      randomUUID(),
+      password,
       keychain,
     ]);
+    await execute("/usr/bin/security", [
+      "unlock-keychain",
+      "-p",
+      password,
+      keychain,
+    ]);
+  }
   const child = spawn(
     process.execPath,
     [

@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { z } from "zod";
 import { AppError } from "../core/errors.js";
 import { deleteToken, requireToken, saveToken } from "./credentials.js";
-import { RemoteClient } from "./http.js";
+import { RemoteClient, remoteResponse } from "./http.js";
 
 const execute = promisify(execFile);
 const httpUrl = z
@@ -31,17 +31,6 @@ const sessionSchema = z.object({
   lastUsedAt: z.iso.datetime(),
   expiresAt: z.iso.datetime(),
 });
-
-function remoteResponse<T>(schema: z.ZodType<T>, response: unknown): T {
-  const result = schema.safeParse(response);
-  if (!result.success)
-    throw new AppError({
-      code: "REMOTE_PROTOCOL_ERROR",
-      message: "服务端返回的授权数据无效，请核对 CLI 与 PageHush 版本",
-      exitCode: 5,
-    });
-  return result.data;
-}
 
 function authorizationFailure(code: string, message: string) {
   return new AppError({ code, message, exitCode: 4 });
@@ -157,6 +146,14 @@ export async function login(
 
 export async function logout(client: RemoteClient) {
   const authenticated = await authorizedClient(client);
+  function unconfirmed(error: unknown): never {
+    if (!(error instanceof AppError)) throw error;
+    throw new AppError({
+      code: error.code,
+      message: `尚未确认服务端撤销，已保留本机凭据；请检查网络和服务状态后运行 yoho auth logout 重试。${error.message}`,
+      exitCode: error.exitCode,
+    });
+  }
   try {
     await authenticated.request("/v1/auth/device/logout", {
       method: "DELETE",
@@ -164,7 +161,7 @@ export async function logout(client: RemoteClient) {
     });
   } catch (error) {
     if (!(error instanceof AppError) || error.code !== "UNAUTHORIZED")
-      throw error;
+      unconfirmed(error);
     try {
       await authenticated.request("/v1/auth/device/session", { retry: false });
     } catch (statusError) {
@@ -172,7 +169,7 @@ export async function logout(client: RemoteClient) {
         !(statusError instanceof AppError) ||
         statusError.code !== "UNAUTHORIZED"
       )
-        throw statusError;
+        unconfirmed(statusError);
       await deleteToken(client.server);
       return {
         authenticated: false as const,
@@ -180,7 +177,7 @@ export async function logout(client: RemoteClient) {
         revoked: true as const,
       };
     }
-    throw error;
+    unconfirmed(error);
   }
   await deleteToken(client.server);
   return {

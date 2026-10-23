@@ -6,6 +6,39 @@ const errorSchema = z.object({
   code: z.string().optional(),
   message: z.string().optional(),
 });
+
+export function remoteResponse<T>(schema: z.ZodType<T>, response: unknown): T {
+  const result = schema.safeParse(response);
+  if (!result.success)
+    throw new AppError({
+      code: "REMOTE_PROTOCOL_ERROR",
+      message: "服务端返回的数据格式无效，请核对 CLI 与 PageHush 的配套版本",
+      exitCode: 5,
+    });
+  return result.data;
+}
+
+const recoveryGuidance: Record<string, string> = {
+  UNAUTHORIZED: "设备授权已过期或被撤销，请运行 yoho auth login 重新授权",
+  FORBIDDEN: "设备没有此操作权限，请在 PageHush 网页检查授权",
+  REVISION_CONFLICT:
+    "文章已发生变化，请用 yoho blog show <id> 重新查看并核对内容，再使用新版本操作",
+  REVISION_REQUIRED:
+    "缺少文章版本，请先运行 yoho blog show <id>，再提供 --if-match",
+  ARTICLE_NOT_FOUND: "文章不存在或已被删除，请用 yoho blog list 核对文章标识",
+  REQUEST_CONFLICT:
+    "同一请求编号对应的内容或目标不一致，请查询原操作结果并核对输入",
+  OPERATION_UNKNOWN:
+    "服务器尚未记录此操作，请使用原请求编号和原文档恢复；无法核实时先人工检查文章",
+  OPERATION_EXPIRED:
+    "操作已超过结果保留期，请人工核对文章，不能重用旧编号重新执行",
+};
+export function remoteErrorMessage(code: string, message?: string): string {
+  return (
+    recoveryGuidance[code] ??
+    `${message ?? `远程请求失败：${code}`}；请核对参数、服务地址及 CLI/PageHush 配套版本`
+  );
+}
 export class RemoteClient {
   constructor(
     readonly server: string,
@@ -57,10 +90,10 @@ export class RemoteClient {
                   : 5;
           throw new AppError({
             code,
-            message:
-              parsed.success && parsed.data.message
-                ? parsed.data.message
-                : `远程请求失败：${code}（HTTP ${response.status}）`,
+            message: remoteErrorMessage(
+              code,
+              parsed.success ? parsed.data.message : undefined,
+            ),
             exitCode,
           });
         }

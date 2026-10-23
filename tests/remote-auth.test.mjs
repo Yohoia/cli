@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { readFile, readdir } from "node:fs/promises";
 const execute = promisify(execFile);
 import { remoteFixture, runCli, startCli } from "./remote-support.mjs";
+import { interceptingProxy } from "./intercepting-proxy.mjs";
 
 test("installed CLI checks environment authorization without exposing or persisting its token", async (t) => {
   const api = await remoteFixture(t);
@@ -223,5 +224,174 @@ test("installed CLI cancels device polling with one result and no stored credent
   const cancelled = await result;
   assert.equal(cancelled.code, 130, cancelled.stderr + cancelled.stdout);
   assert.equal(JSON.parse(cancelled.stdout).error.code, "CANCELLED");
+  assert.deepEqual(await readdir(api.root), initialFiles);
+});
+
+test(
+  "installed CLI preserves an isolated keychain credential when revocation fails and removes it after retry",
+  { skip: process.platform !== "darwin" },
+  async (t) => {
+    const api = await remoteFixture(t);
+    let failLogout = true;
+    const proxy = await interceptingProxy(t, api.url, (request) => {
+      if (request.url === "/v1/auth/device/logout" && failLogout)
+        return { status: 503, body: { error: "revocation_unavailable" } };
+    });
+    const keychain = join(api.root, "revocation.keychain-db");
+    const password = randomBytes(16).toString("hex");
+    await execute("/usr/bin/security", [
+      "create-keychain",
+      "-p",
+      password,
+      keychain,
+    ]);
+    try {
+      await execute("/usr/bin/security", [
+        "unlock-keychain",
+        "-p",
+        password,
+        keychain,
+      ]);
+      const options = api.options();
+      options.env.YOHO_SERVER = proxy.url;
+      options.env.YOHO_KEYCHAIN = keychain;
+      const { child, result } = await startCli(
+        ["auth", "login", "--no-browser", "--json"],
+        options,
+      );
+      await decide(api, await authorizationCode(child), "approve");
+      const loggedIn = await result;
+      assert.equal(loggedIn.code, 0, loggedIn.stdout + loggedIn.stderr);
+      const credential = () =>
+        execute("/usr/bin/security", [
+          "find-generic-password",
+          "-s",
+          "cn.yohoia.yoho-cli",
+          "-a",
+          proxy.url,
+          "-w",
+          keychain,
+        ]).then(({ stdout }) => stdout.trim());
+      const token = await credential();
+      const failed = await runCli(["auth", "logout", "--json"], options);
+      assert.equal(failed.code, 5, failed.stdout + failed.stderr);
+      assert.equal(
+        JSON.parse(failed.stdout).error.code,
+        "REVOCATION_UNAVAILABLE",
+      );
+      assert.match(JSON.parse(failed.stdout).error.message, /保留.*凭据/);
+      assert.match(JSON.parse(failed.stdout).error.message, /auth logout/);
+      assert.equal(await credential(), token);
+      assert.equal(
+        (
+          await fetch(`${api.url}/v1/auth/device/session`, {
+            headers: { authorization: `Bearer ${token}` },
+          })
+        ).status,
+        200,
+      );
+      failLogout = false;
+      const retried = await runCli(["auth", "logout", "--json"], options);
+      assert.equal(retried.code, 0, retried.stdout + retried.stderr);
+      assert.equal(JSON.parse(retried.stdout).data.revoked, true);
+      await assert.rejects(credential());
+      assert.equal(
+        (
+          await fetch(`${api.url}/v1/auth/device/session`, {
+            headers: { authorization: `Bearer ${token}` },
+          })
+        ).status,
+        401,
+      );
+      assert.equal(
+        proxy.requests.filter(
+          (request) => request.url === "/v1/auth/device/logout",
+        ).length,
+        2,
+      );
+      assert.equal(
+        (
+          loggedIn.stdout +
+          loggedIn.stderr +
+          failed.stdout +
+          failed.stderr +
+          retried.stdout +
+          retried.stderr
+        ).includes(token),
+        false,
+      );
+    } finally {
+      await execute("/usr/bin/security", ["delete-keychain", keychain]);
+    }
+  },
+);
+
+async function deviceProtocolProxy(t, api, { expiresIn, poll }) {
+  return interceptingProxy(t, api.url, async (request) => {
+    if (request.url === "/v1/auth/device/code") {
+      const issued = await fetch(`${api.url}/v1/auth/device/code`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "Device protocol test" }),
+      });
+      return {
+        status: issued.status,
+        body: { ...(await issued.json()), interval: 1, expires_in: expiresIn },
+      };
+    }
+    if (request.url === "/v1/auth/device/token") return poll(request);
+  });
+}
+
+test("installed CLI slows device polling after slow_down and reports server expiration without storing credentials", async (t) => {
+  const api = await remoteFixture(t);
+  const initialFiles = await readdir(api.root);
+  let attempts = 0;
+  const proxy = await deviceProtocolProxy(t, api, {
+    expiresIn: 30,
+    poll: () => ({
+      status: 400,
+      body: { error: attempts++ === 0 ? "slow_down" : "expired_token" },
+    }),
+  });
+  const options = api.options();
+  options.env.YOHO_SERVER = proxy.url;
+  const result = await runCli(
+    ["auth", "login", "--no-browser", "--json"],
+    options,
+  );
+  assert.equal(result.code, 4, result.stdout + result.stderr);
+  assert.equal(JSON.parse(result.stdout).error.code, "DEVICE_AUTH_EXPIRED");
+  const polls = proxy.requests.filter(
+    (request) => request.url === "/v1/auth/device/token",
+  );
+  assert.equal(polls.length, 2);
+  assert.ok(
+    polls[1].at - polls[0].at >= 5_800,
+    "slow_down must add five seconds to the one-second interval",
+  );
+  assert.deepEqual(await readdir(api.root), initialFiles);
+});
+
+test("installed CLI stops when the device-code deadline expires and stores no credential", async (t) => {
+  const api = await remoteFixture(t);
+  const initialFiles = await readdir(api.root);
+  const proxy = await deviceProtocolProxy(t, api, {
+    expiresIn: 1,
+    poll: () => ({ status: 400, body: { error: "authorization_pending" } }),
+  });
+  const options = api.options();
+  options.env.YOHO_SERVER = proxy.url;
+  const result = await runCli(
+    ["auth", "login", "--no-browser", "--json"],
+    options,
+  );
+  assert.equal(result.code, 4, result.stdout + result.stderr);
+  assert.equal(JSON.parse(result.stdout).error.code, "DEVICE_AUTH_EXPIRED");
+  assert.equal(
+    proxy.requests.filter((request) => request.url === "/v1/auth/device/token")
+      .length,
+    0,
+  );
   assert.deepEqual(await readdir(api.root), initialFiles);
 });

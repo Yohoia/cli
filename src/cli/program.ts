@@ -5,7 +5,11 @@ import { AppError } from "../core/errors.js";
 import { login, authStatus, logout } from "../remote/auth.js";
 import { resolveServer, saveServer } from "../remote/config.js";
 import { requireToken } from "../remote/credentials.js";
-import { RemoteClient } from "../remote/http.js";
+import {
+  RemoteClient,
+  remoteResponse,
+  remoteErrorMessage,
+} from "../remote/http.js";
 import { randomUUID } from "node:crypto";
 import { uploadImages } from "../remote/upload.js";
 import { readDocument } from "../remote/document.js";
@@ -151,7 +155,8 @@ export async function runProgram({
       if (options.keyword) query.set("q", options.keyword);
       result = {
         kind: "list",
-        data: listSchema.parse(
+        data: remoteResponse(
+          listSchema,
           await (await client(command)).request(`/v1/cli/articles?${query}`),
         ),
       };
@@ -163,7 +168,8 @@ export async function runProgram({
     .action(async (id: string, _options: unknown, command: Command) => {
       result = {
         kind: "show",
-        data: articleSchema.parse(
+        data: remoteResponse(
+          articleSchema,
           await (
             await client(command)
           ).request(`/v1/cli/articles/${encodeURIComponent(id)}`),
@@ -239,7 +245,8 @@ export async function runProgram({
         });
       const api = await client(command);
       if (options.dryRun) {
-        const article = articleSchema.parse(
+        const article = remoteResponse(
+          articleSchema,
           await api.request(`/v1/cli/articles/${encodeURIComponent(id)}`),
         );
         result = {
@@ -310,7 +317,10 @@ export async function runProgram({
         if (existing?.status === "failed")
           throw new AppError({
             code: existing.error.code.toUpperCase(),
-            message: existing.error.message,
+            message: remoteErrorMessage(
+              existing.error.code.toUpperCase(),
+              existing.error.message,
+            ),
             exitCode: 3,
           });
         if (record.kind !== "create") {

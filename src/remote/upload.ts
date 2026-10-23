@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { basename } from "node:path";
 import { z } from "zod";
 import type { readDocument } from "./document.js";
-import { RemoteClient } from "./http.js";
+import { RemoteClient, remoteResponse } from "./http.js";
 import { AppError } from "../core/errors.js";
 type Document = Awaited<ReturnType<typeof readDocument>>;
 const assetSchema = z.object({
@@ -29,7 +29,8 @@ export async function uploadImages(
       basename(image.path),
     );
     try {
-      const asset = assetSchema.parse(
+      const asset = remoteResponse(
+        assetSchema,
         await client.request(`/v1/cli/uploads/${requestId}/assets`, {
           method: "POST",
           headers: {
