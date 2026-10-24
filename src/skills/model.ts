@@ -11,7 +11,12 @@ export const metadataSchema = z.object({
   commit: z.string().regex(/^[a-f0-9]{40,64}$/),
 });
 export type Metadata = z.infer<typeof metadataSchema>;
-const repoSchema = z.string().regex(/^[a-z0-9][a-z0-9-]*\/[a-z0-9_.-]+$/);
+const repoSchema = z
+  .string()
+  .regex(/^[a-z0-9][a-z0-9-]*\/[a-z0-9_.-]+$/)
+  .refine(
+    (value) => !value.split("/").some((part) => part === "." || part === ".."),
+  );
 export const sourceSchema = z.object({
   repo: repoSchema,
   metadata: metadataSchema.optional(),
@@ -108,15 +113,14 @@ export function repository(raw: string): string {
   const value = raw
     .replace(/^https:\/\/github\.com\//i, "")
     .replace(/\/$/, "")
-    .replace(/\.git$/i, "");
-  if (
-    !/^[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9_.-]+$/.test(value) ||
-    value.split("/").some((x) => x === "." || x === "..")
-  )
+    .replace(/\.git$/i, "")
+    .toLowerCase();
+  const parsed = repoSchema.safeParse(value);
+  if (!parsed.success)
     throw failure(
       "INVALID_SOURCE",
       "来源必须是 owner/repo 或 GitHub 仓库链接",
       2,
     );
-  return value.toLowerCase();
+  return parsed.data;
 }

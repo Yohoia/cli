@@ -2,7 +2,16 @@ import { join, dirname } from "node:path";
 import { discover } from "./inventory.js";
 import { GitHub, parseSkill, refresh } from "./github.js";
 import { saveState } from "./state.js";
-import { roots, exists, stageFiles, reserve, rename, rm } from "./files.js";
+import {
+  roots,
+  exists,
+  stageFiles,
+  reserve,
+  rename,
+  rm,
+  directoryIdentity,
+  removeCreatedDirectory,
+} from "./files.js";
 import { unpack, type SkillFiles } from "./archive.js";
 import {
   failure,
@@ -37,11 +46,7 @@ export async function prepare(
     );
   const files = unpack(await github.archive(source.repo, metadata.commit));
   const entry = files.get("SKILL.md");
-  if (
-    !entry ||
-    parseSkill(new TextDecoder("utf-8", { fatal: true }).decode(entry.bytes))
-      .name !== metadata.name
-  )
+  if (!entry || parseSkill(entry.bytes).name !== metadata.name)
     throw failure("SKILL_IDENTITY_CHANGED", "归档 Skill 身份与元数据不一致");
   source.metadata = metadata;
   return { repo: source.repo, metadata, files };
@@ -96,7 +101,10 @@ export async function installation(
       prepared.set(source.repo, await prepare(source, github));
   }
   const oldRecords = [...state.records];
-  const created: string[] = [];
+  const created: {
+    path: string;
+    identity: Awaited<ReturnType<typeof directoryIdentity>>;
+  }[] = [];
   const locks: (() => Promise<void>)[] = [];
   try {
     for (const { source, path } of planned) {
@@ -113,8 +121,9 @@ export async function installation(
         if (await exists(path))
           throw failure("SKILL_TARGET_CHANGED", `预检后目标已存在：${path}`);
         github.signal.throwIfAborted();
+        const identity = await directoryIdentity(stage);
         await rename(stage, path);
-        created.push(path);
+        created.push({ path, identity });
         state.records = state.records.filter((x) => x.path !== path);
         state.records.push({
           repo: source.repo,
@@ -135,11 +144,13 @@ export async function installation(
     await saveState(state);
   } catch (error) {
     const remnants: string[] = [];
-    for (const path of created.reverse())
+    for (const { path, identity } of created.reverse())
       try {
-        await rm(path, { recursive: true });
-      } catch {
-        remnants.push(path);
+        await removeCreatedDirectory(path, identity);
+      } catch (cleanupError) {
+        remnants.push(
+          cleanupError instanceof Error ? cleanupError.message : path,
+        );
       }
     state.records = oldRecords;
     try {

@@ -84,7 +84,7 @@ test("interrupted backups are preserved and reported rather than silently discar
   await f.command(["install", "speckit", "--target", "agents"]);
   const backup = join(
     f.project,
-    ".agents/skills/.yoho-backup-speckit-interrupted",
+    `.agents/skills/.yoho-backup-speckit-${randomUUID()}`,
   );
   await mkdir(backup);
   await writeFile(join(backup, "original"), "keep old content");

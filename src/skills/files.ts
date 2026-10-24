@@ -8,6 +8,7 @@ import {
   rm,
   readdir,
   readFile,
+  rmdir,
 } from "node:fs/promises";
 import { join, resolve, dirname, basename } from "node:path";
 import { homedir } from "node:os";
@@ -23,6 +24,54 @@ export async function exists(path: string): Promise<boolean> {
   } catch (error) {
     if (systemErrorCode(error) === "ENOENT") return false;
     throw error;
+  }
+}
+export async function directoryIdentity(path: string) {
+  const { dev, ino, birthtimeNs } = await lstat(path, { bigint: true });
+  return { dev, ino, birthtimeNs };
+}
+export async function removeCreatedDirectory(
+  path: string,
+  identity: Awaited<ReturnType<typeof directoryIdentity>>,
+): Promise<void> {
+  async function matches(candidate: string) {
+    const current = await directoryIdentity(candidate);
+    return (
+      current.dev === identity.dev &&
+      current.ino === identity.ino &&
+      current.birthtimeNs === identity.birthtimeNs
+    );
+  }
+  try {
+    if (!(await matches(path)))
+      throw failure(
+        "SKILL_TARGET_CHANGED",
+        `目标已被替换，保留内容：${path}`,
+        5,
+      );
+  } catch (error) {
+    if (systemErrorCode(error) === "ENOENT") return;
+    throw error;
+  }
+  const quarantine = await mkdtemp(join(dirname(path), ".yoho-rollback-"));
+  const captured = join(quarantine, "target");
+  try {
+    await rename(path, captured);
+    if (!(await matches(captured)))
+      throw failure(
+        "SKILL_TARGET_CHANGED",
+        `回滚期间目标 ${path} 被替换，内容已保留：${captured}`,
+        5,
+      );
+    await rm(captured, { recursive: true });
+  } catch (error) {
+    throw failure(
+      "SKILL_ROLLBACK_FAILED",
+      `无法回滚 ${path}；请核对保留位置 ${captured}：${error instanceof Error ? error.message : String(error)}`,
+      5,
+    );
+  } finally {
+    await rmdir(quarantine).catch(() => {});
   }
 }
 async function canonical(path: string): Promise<string> {
@@ -110,7 +159,7 @@ export async function reserve(path: string): Promise<() => Promise<void>> {
   const release = await directoryLock(lock);
   try {
     const backups = (await readdir(dirname(path))).filter((x) =>
-      x.startsWith(`.yoho-backup-${basename(path)}-`),
+      isBackupFor(x, path),
     );
     if (backups.length)
       throw failure(
@@ -123,6 +172,15 @@ export async function reserve(path: string): Promise<() => Promise<void>> {
     throw error;
   }
   return release;
+}
+export function isBackupFor(name: string, path: string): boolean {
+  const prefix = `.yoho-backup-${basename(path)}-`;
+  return (
+    name.startsWith(prefix) &&
+    /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(
+      name.slice(prefix.length),
+    )
+  );
 }
 export function backupPath(path: string) {
   return join(dirname(path), `.yoho-backup-${basename(path)}-${randomUUID()}`);

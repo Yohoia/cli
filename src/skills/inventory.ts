@@ -1,7 +1,7 @@
 import { readdir, readFile, lstat } from "node:fs/promises";
-import { join, dirname, basename } from "node:path";
+import { join, dirname } from "node:path";
 import { systemErrorCode } from "../core/errors.js";
-import { roots } from "./files.js";
+import { roots, isBackupFor } from "./files.js";
 import { parseSkill } from "./github.js";
 import {
   failure,
@@ -45,7 +45,7 @@ export async function discover(
           const info = await lstat(entry);
           if (!info.isFile() || info.isSymbolicLink())
             throw failure("SKILL_TARGET_UNSAFE", "Skill 入口不是普通文件");
-          name = parseSkill(await readFile(entry, "utf8")).name;
+          name = parseSkill(await readFile(entry)).name;
         }
       } catch (error) {
         problem = error instanceof Error ? error.message : "无法解析 Skill";
@@ -56,9 +56,7 @@ export async function discover(
       (x) =>
         dirname(x.path) === root && !found.some((item) => item.path === x.path),
     )) {
-      const backups = names.filter((name) =>
-        name.startsWith(`.yoho-backup-${basename(record.path)}-`),
-      );
+      const backups = names.filter((name) => isBackupFor(name, record.path));
       if (backups.length)
         found.push({
           kind: "recovery",

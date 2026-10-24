@@ -88,10 +88,7 @@ export class GitHub {
     const content = z
       .object({ encoding: z.literal("base64"), content: z.string() })
       .parse(await this.json(`/repos/${repo}/contents/SKILL.md?ref=${commit}`));
-    const text = new TextDecoder("utf-8", { fatal: true }).decode(
-      Buffer.from(content.content, "base64"),
-    );
-    return { ...parseSkill(text), commit };
+    return { ...parseSkill(Buffer.from(content.content, "base64")), commit };
   }
   async archive(repo: string, commit: string): Promise<Buffer> {
     let response = await this.response(`/repos/${repo}/tarball/${commit}`);
@@ -129,7 +126,16 @@ export class GitHub {
     return Buffer.concat(chunks);
   }
 }
-export function parseSkill(text: string) {
+export function parseSkill(input: string | Uint8Array) {
+  let text: string;
+  try {
+    text =
+      typeof input === "string"
+        ? input
+        : new TextDecoder("utf-8", { fatal: true }).decode(input);
+  } catch {
+    throw failure("SKILL_INVALID", "SKILL.md 必须使用有效的 UTF-8 编码");
+  }
   const match = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
   if (!match?.[1]) throw failure("SKILL_INVALID", "Skill 缺少有效 frontmatter");
   try {
