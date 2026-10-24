@@ -2,6 +2,8 @@
 
 通过终端或本地产品直接管理 PageHush 远程文章库：列出文章、查看详情、上传 Markdown 草稿、按版本发布、预览并软删除文章，以及查询或恢复写入操作。
 
+0.4.0 增加 GitHub Skill 来源管理、终端多选安装和更新，支持项目级、用户级与多个 Agent 目录。
+
 PageHush 是文章的唯一权威来源。CLI 0.3.0 替换原有本地文章管理，不再扫描博客目录、修改本地文章，也不提供双向同步。已有文章的正文、标题及元数据修改继续在 PageHush 网页完成。
 
 ## 安装并全局使用
@@ -12,7 +14,7 @@ PageHush 是文章的唯一权威来源。CLI 0.3.0 替换原有本地文章管�
 pnpm install --frozen-lockfile
 pnpm check
 pnpm pack --pack-destination artifacts
-npm install --global ./artifacts/yoho-cli-0.3.0.tgz
+npm install --global ./artifacts/yoho-cli-0.4.0.tgz
 yoho --version
 yoho --help
 ```
@@ -22,7 +24,7 @@ yoho --help
 如果全局目录不可写而出现 `EACCES`，可安装到用户目录：
 
 ```bash
-npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.3.0.tgz
+npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.4.0.tgz
 ```
 
 确保 `$HOME/.local/bin` 已加入 shell 的 `PATH`；尚未配置时，在 `~/.zshrc` 中添加 `export PATH="$HOME/.local/bin:$PATH"` 并重新打开终端。
@@ -160,6 +162,62 @@ yoho blog resume 'PUBLISH_OR_DELETE_REQUEST_UUID' --json
 
 本地只保存服务身份、请求编号、输入指纹等恢复信息。服务端结果至少保留七天。超过保留期仍不能确认时应人工核对；旧编号不会被静默作为新请求执行。请勿删除操作记录后用新 `create` 冒充同一次重试。
 
+## Skill 来源、安装与更新
+
+Skill 功能无需 PageHush 登录。首次使用登记三个来源：`Yohoia/yoho-standard-readme`、`Yohoia/yoho-retro-poster`、`Yohoia/yoho-speckit`。第三个仓库的 Skill 名称是 `speckit`。
+
+```bash
+yoho skill list
+yoho skill source list
+yoho skill source add owner/repo
+yoho skill source add https://github.com/owner/repo
+yoho skill source refresh
+yoho skill source remove owner/repo
+```
+
+来源按当前用户保存，各项目共用。首版每个仓库在根目录放一个 `SKILL.md`，名称和描述来自其 frontmatter。移除来源不会卸载已有 Skill，也不会在下次启动时自动加回；该来源的更新暂停，重新添加后恢复。
+
+公开仓库可以不登录下载。私有仓库复用本机 `gh auth login`；CLI 不另存 GitHub 令牌。来源暂不可用时保留上次条目并显示原因，当前可获取数量与已知数量分别展示。安装或更新必须取得当前提交，不能把缓存当成最新版本。
+
+直接运行以下命令进入终端选择：
+
+```bash
+yoho skill install
+yoho skill update
+```
+
+先选择项目级或用户级，再选择目标工具，最后多选 Skill。使用方向键移动、空格勾选、`a` 全选可用项、Enter 继续、Ctrl+C 取消。已安装状态单独显示为 `✓ 已安装`；全部所选目标已有时安装列表禁选，部分已有时只补装缺失目标。
+
+| target   | 项目级           | 用户级             |
+| -------- | ---------------- | ------------------ |
+| `claude` | `.claude/skills` | `~/.claude/skills` |
+| `agents` | `.agents/skills` | `~/.agents/skills` |
+| `codex`  | `.codex/skills`  | `~/.codex/skills`  |
+
+通过参数可以不经菜单直接安装或更新：
+
+```bash
+yoho skill install speckit yoho-retro-poster --target claude --target agents
+yoho skill install speckit --scope user --target codex
+yoho skill install speckit --project-path /path/to/project --target agents
+yoho skill list --target claude --target agents --json
+yoho skill update speckit --target agents
+yoho skill update speckit yoho-retro-poster --target claude --json
+yoho skill update --all --scope user --target agents --target codex --json
+```
+
+范围默认 `project`，项目位置默认当前工作目录。`--target` 可以重复，实际相同的目标位置只处理一次。同名多来源时使用 `owner/repo` 指定来源。非交互时必须给出 Skill 或更新的 `--all`，并指定目标；不会把省略名称的更新当成更新全部。
+
+安装使用默认分支最新提交，同一次操作的多个目标使用同一提交。完整复制 Skill 资源并排除 Git 元数据，不运行脚本、安装 npm/pip 依赖或配置 Skill 的运行密钥。Skill 所需的运行环境仍按其自身说明准备。
+
+更新以仓库为准：覆盖本地修改、恢复本地删除、删除仓库没有的本地新增文件。即使远程提交未变也检查文件内容。手动安装先按 `SKILL.md` 的 `name` 在登记来源中匹配，唯一匹配才自动建立来源关联；没有匹配或有歧义会跳过并说明原因。更新仅处理所选范围的已有安装，不补装缺失目标。
+
+首次批量安装先完成全部下载和检查，写入失败回滚本批新增内容，原有目录保留。更新按目标恢复：已经成功的目标保留，失败目标恢复到写入之前，继续处理其他项；有失败时返回非零退出码。JSON 失败结果中的 `data.items` 仍包含成功项和失败详情。清理或恢复不成功会报告相关路径。
+
+Skill 状态保存在用户配置目录中，与 Skill 内容目录分开；可沿用 `YOHO_CONFIG_DIR` 隔离配置。不要删除来源和安装记录来强行接管未知目录。首版不提供卸载、版本回退或定时更新。
+
+普通写入失败由 CLI 按上述规则恢复。若进程被强制终止，失效的普通锁可在重试时回收；若返回 `SKILL_RECOVERY_REQUIRED`，按照结果中的路径检查遗留状态。回收门本身中断时，确认没有其他 Skill 操作，再将报出的回收门目录改名留存后重试；遗留备份需要先核对并恢复目标内容。CLI 不会猜测并删除未确认的备份，目标暂时缺失时也会报告备份路径。
+
 ## JSON 输出和退出码
 
 业务命令添加 `--json` 后，成功或失败各向 stdout 输出一个独立 JSON 结果。进度、授权网址和未导入字段提示写 stderr，不污染 JSON。参数完整的业务命令不等待交互；设备授权仍需网页批准，删除确认通过 `--yes` 表达。
@@ -175,14 +233,14 @@ yoho blog resume 'PUBLISH_OR_DELETE_REQUEST_UUID' --json
 }
 ```
 
-| 退出码 | 含义                                     |
-| ------ | ---------------------------------------- |
-| 0      | 成功                                     |
-| 2      | 参数或配置错误                           |
-| 3      | 文章数据错误、版本冲突或请求冲突         |
-| 4      | 认证、设备授权或权限错误                 |
-| 5      | 本地文件、网络、远程 I/O 或结果未知      |
-| 130    | 用户取消；已发出的远程写入仍需按编号核对 |
+| 退出码 | 含义                                      |
+| ------ | ----------------------------------------- |
+| 0      | 成功                                      |
+| 2      | 参数或配置错误                            |
+| 3      | 文章或 Skill 数据错误、版本冲突或身份冲突 |
+| 4      | 认证、设备授权或权限错误                  |
+| 5      | 本地文件、网络、远程 I/O 或结果未知       |
+| 130    | 用户取消；已发出的远程写入仍需按编号核对  |
 
 ## 从 0.2.0 迁移
 
@@ -212,3 +270,5 @@ npx playwright test -c playwright.remote.config.ts
 ```
 
 PGlite 和单请求协议测试不能代替真实多连接并发证明。服务端原子版本保护、请求去重、文章提交与素材回收竞争需要配套 PageHush 的独立临时 PostgreSQL 验收。所有验收结果仅说明隔离环境下的行为，不表示线上已部署。
+
+Skill 验收同样运行安装后的 CLI，使用本机 GitHub 协议夹具、隔离 gh 授权边界及真实伪终端按键。测试需要 Python 3 和系统 tar，不读取真实 GitHub 登录或修改真实 Skill；测试下载服务仅允许本机地址。

@@ -1,6 +1,26 @@
 import type { CommandResult } from "./program.js";
 export function renderText(result: CommandResult): string {
   switch (result.kind) {
+    case "skills": {
+      const lines = result.data.items.map((item) => {
+        const path = "path" in item ? item.path : "";
+        const targets =
+          "targets" in item
+            ? item.targets
+                ?.map(
+                  (target) =>
+                    `${target.path} ${target.installed ? "✓ 已安装" : "未安装"}`,
+                )
+                .join("；")
+            : "";
+        return `${item.name ?? item.repo}\t${item.repo}\t${item.status}\t${item.description ?? ""}\t${path}\t${targets ?? ""}\t${item.message ?? ""}`;
+      });
+      const count =
+        result.data.operation === "list"
+          ? `已知 Skill 数：${result.data.total}；当前可获取：${result.data.available}；未确认来源：${result.data.unknown}`
+          : `条目数：${result.data.total}`;
+      return lines.join("\n") + "\n" + count + "\n";
+    }
     case "list":
       return `${result.data.items.map((item) => `${item.id}\t${item.shortId ?? ""}\t${item.status}\t${item.publishedAt ?? "未发布"}\t${item.revision}\t${item.title}`).join("\n")}\n${result.data.nextPage === null ? "已到末页" : `下一页：${result.data.nextPage}`}\n`;
     case "show":

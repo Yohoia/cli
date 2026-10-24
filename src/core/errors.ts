@@ -4,6 +4,7 @@ type ErrorCode = string;
 type ExitCode = 2 | 3 | 4 | 5 | 130;
 
 export class AppError extends Error {
+  readonly data: unknown;
   readonly code: ErrorCode;
   readonly exitCode: ExitCode;
 
@@ -11,15 +12,18 @@ export class AppError extends Error {
     code,
     message,
     exitCode,
+    data,
   }: {
     code: ErrorCode;
     message: string;
     exitCode: ExitCode;
+    data?: unknown;
   }) {
     super(message);
     this.name = "AppError";
     this.code = code;
     this.exitCode = exitCode;
+    this.data = data;
   }
 }
 

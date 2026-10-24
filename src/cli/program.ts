@@ -21,12 +21,15 @@ import {
   type OperationRecord,
 } from "../remote/operations.js";
 import { articleSchema, listSchema } from "../remote/models.js";
+import { registerSkills } from "../skills/commands.js";
+import type { SkillResult } from "../skills/model.js";
 
 const optionsSchema = z.object({
   server: z.string().optional(),
   json: z.boolean().default(false),
 });
 export type CommandResult =
+  | { kind: "skills"; data: SkillResult }
   | { kind: "list"; data: z.infer<typeof listSchema> }
   | { kind: "show"; data: z.infer<typeof articleSchema> }
   | { kind: "write"; data: Awaited<ReturnType<typeof performOperation>> }
@@ -78,13 +81,16 @@ export async function runProgram({
   }
   const program = new Command()
     .name("yoho")
-    .description("通过 PageHush API 管理远程博客文章")
+    .description("管理远程博客文章与 GitHub Skill")
     .version(manifest.version)
     .option("--server <url>", "PageHush 服务地址")
     .option("--json", "输出 JSON 结果")
     .configureOutput({ writeErr: () => undefined })
     .exitOverride();
   const auth = program.command("auth").description("设备授权管理");
+  registerSkills(program, signal, (data) => {
+    result = { kind: "skills", data };
+  });
   auth
     .command("login")
     .description("通过网页批准此 CLI 设备")

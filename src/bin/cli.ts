@@ -25,7 +25,7 @@ async function main(): Promise<void> {
     const failure = normalizeError(error, controller.signal);
     if (json)
       process.stdout.write(
-        `${JSON.stringify({ ok: false, error: { code: failure.code, message: failure.message } })}\n`,
+        `${JSON.stringify({ ok: false, error: { code: failure.code, message: failure.message }, ...(failure.data === undefined ? {} : { data: failure.data }) })}\n`,
       );
     else process.stderr.write(`${failure.code}: ${failure.message}\n`);
     process.exitCode = failure.exitCode;
