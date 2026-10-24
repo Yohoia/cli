@@ -4,6 +4,8 @@
 
 0.4.0 增加 GitHub Skill 来源管理、终端多选安装和更新，支持项目级、用户级与多个 Agent 目录。
 
+0.4.1 将文章和 Skill 的普通列表改为表格，支持中文对齐及长文本换行。
+
 PageHush 是文章的唯一权威来源。CLI 0.3.0 替换原有本地文章管理，不再扫描博客目录、修改本地文章，也不提供双向同步。已有文章的正文、标题及元数据修改继续在 PageHush 网页完成。
 
 ## 安装并全局使用
@@ -14,7 +16,7 @@ PageHush 是文章的唯一权威来源。CLI 0.3.0 替换原有本地文章管�
 pnpm install --frozen-lockfile
 pnpm check
 pnpm pack --pack-destination artifacts
-npm install --global ./artifacts/yoho-cli-0.4.0.tgz
+npm install --global ./artifacts/yoho-cli-0.4.1.tgz
 yoho --version
 yoho --help
 ```
@@ -24,7 +26,7 @@ yoho --help
 如果全局目录不可写而出现 `EACCES`，可安装到用户目录：
 
 ```bash
-npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.4.0.tgz
+npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.4.1.tgz
 ```
 
 确保 `$HOME/.local/bin` 已加入 shell 的 `PATH`；尚未配置时，在 `~/.zshrc` 中添加 `export PATH="$HOME/.local/bin:$PATH"` 并重新打开终端。
@@ -82,6 +84,8 @@ yoho blog show 'COMPLETE_SHORT_ID' --json
 ```
 
 列表默认包含未删除的草稿和已发布文章，每页 20 篇。筛选在分页前执行，按服务器记录更新时间倒序稳定排序，并返回下一页信息。当前页不代表完整文章库。
+
+普通列表以表格展示文章 ID、标题、状态、发布时间及完整版本；短 ID 与 UUID 在同一列分行显示。列宽适配终端，长内容自动换行；空列表明确显示“暂无文章”。
 
 文章身份使用 UUID 或完整短 ID；不接受标题、slug、短 ID 前缀或本地路径作为远程身份。详情返回完整 Markdown、服务器元数据及 `revision`。版本是不透明的服务器比较值，发布和删除时应原样传回。草稿创建时间与首次发布时间分别保留，未发布文章不会被标为已发布。
 
@@ -176,6 +180,8 @@ yoho skill source remove owner/repo
 ```
 
 来源按当前用户保存，各项目共用。首版每个仓库在根目录放一个 `SKILL.md`，名称和描述来自其 frontmatter。移除来源不会卸载已有 Skill，也不会在下次启动时自动加回；该来源的更新暂停，重新添加后恢复。
+
+普通列表以表格展示 Skill、来源、中文状态和说明；指定 `--target` 时增加逐目标安装位置及已安装标记。名称、说明和路径完整换行显示，`--json` 仍返回原有结构化数据。
 
 公开仓库可以不登录下载。私有仓库复用本机 `gh auth login`；CLI 不另存 GitHub 令牌。来源暂不可用时保留上次条目并显示原因，当前可获取数量与已知数量分别展示。安装或更新必须取得当前提交，不能把缓存当成最新版本。
 

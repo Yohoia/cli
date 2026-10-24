@@ -1,6 +1,6 @@
 {
   "name": "yoho-cli",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "description": "Manage PageHush articles and install or update GitHub Agent Skills",
   "type": "module",
@@ -32,6 +32,7 @@
     "parse5": "7.3.0",
     "prettier": "^3.9.10",
     "remark-parse": "11.0.0",
+    "string-width": "^8.3.0",
     "typescript": "^7.0.2",
     "unified": "11.0.5",
     "yaml": "^2.9.1",
