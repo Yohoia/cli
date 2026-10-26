@@ -1,13 +1,25 @@
-import { chmod, mkdir } from "node:fs/promises";
+import { chmod, mkdir, rm } from "node:fs/promises";
 import { build } from "esbuild";
 
+await rm("dist", { recursive: true, force: true });
 await mkdir("dist", { recursive: true });
 await build({
-  entryPoints: ["src/bin/cli.ts"],
-  outfile: "dist/cli.cjs",
+  entryPoints: { cli: "src/bin/cli.ts" },
+  outdir: "dist",
+  chunkNames: "chunks/[name]-[hash]",
+  splitting: true,
   bundle: true,
   platform: "node",
   target: "node24",
-  format: "cjs",
+  format: "esm",
+  external: ["react-devtools-core"],
+  minifySyntax: true,
+  define: {
+    "process.env.NODE_ENV": '"production"',
+  },
+  banner: {
+    js: "import {createRequire} from 'node:module'; const require = createRequire(import.meta.url);",
+  },
 });
-await chmod("dist/cli.cjs", 0o755);
+await chmod("dist/cli.js", 0o755);
+await rm("dist/cli.cjs", { force: true });

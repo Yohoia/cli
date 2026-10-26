@@ -9,6 +9,10 @@ export const metadataSchema = z.object({
   name: skillName,
   description: z.string().min(1),
   commit: z.string().regex(/^[a-f0-9]{40,64}$/),
+  version: z
+    .string()
+    .regex(/^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)*$/)
+    .optional(),
 });
 export type Metadata = z.infer<typeof metadataSchema>;
 const repoSchema = z
@@ -26,6 +30,7 @@ export const recordSchema = z.object({
   name: skillName,
   path: z.string().startsWith("/"),
   commit: metadataSchema.shape.commit.nullable(),
+  version: metadataSchema.shape.version,
 });
 export type InstallRecord = z.infer<typeof recordSchema>;
 export const stateSchema = z.object({
@@ -49,9 +54,13 @@ export const selectionSchema = z.object({
   all: z.boolean().default(false),
 });
 export type Selection = z.infer<typeof selectionSchema>;
+export type UpdateScope =
+  | { kind: "automatic"; all: boolean }
+  | { kind: "selected"; selection: Selection };
 export type CatalogItem = {
   repo: string;
-  targets?: { path: string; installed: boolean }[];
+  version?: Metadata["version"];
+  targets?: { path: string; installed: boolean; version?: string }[];
 } & (
   | {
       status: "available";
@@ -75,7 +84,12 @@ export type CatalogItem = {
       message: string;
     }
 );
-export type TargetItem = { repo: string; name: string; path: string } & (
+export type TargetItem = {
+  repo: string;
+  name: string;
+  path: string;
+  version?: Metadata["version"];
+} & (
   | {
       status: "installed" | "updated" | "unchanged";
       commit: string;
@@ -88,10 +102,21 @@ export type TargetItem = { repo: string; name: string; path: string } & (
       commit?: string;
       description?: never;
     }
+  | {
+      status: "uninstalled" | "planned";
+      message?: string;
+      commit?: never;
+      description?: never;
+    }
 );
 export type SkillItem = CatalogItem | TargetItem;
 export type SkillResult = { items: SkillItem[]; total: number } & (
-  | { operation: "list"; available: number; unknown: number }
+  | {
+      operation: "list";
+      available: number;
+      unknown: number;
+      showLocations?: boolean;
+    }
   | {
       operation:
         | "sources"
@@ -101,7 +126,22 @@ export type SkillResult = { items: SkillItem[]; total: number } & (
         | "install"
         | "update";
     }
+  | { operation: "uninstall"; removedSources: [] }
+  | { operation: "uninstall-preview"; sources: string[] }
 );
+export class SkillOperationError extends AppError {
+  constructor(
+    problem: AppError,
+    readonly result: SkillResult,
+  ) {
+    super({
+      code: problem.code,
+      message: problem.message,
+      exitCode: problem.exitCode,
+      data: result,
+    });
+  }
+}
 export function failure(
   code: string,
   message: string,

@@ -1,13 +1,16 @@
-import os, sys, json, pty, selectors, subprocess, time
+import os, sys, json, pty, selectors, subprocess, time, fcntl, termios, struct
 
 command = json.loads(sys.argv[1])
 steps = json.loads(sys.argv[2])
+size = json.loads(sys.argv[3]) if len(sys.argv) > 3 else {"columns": 100, "rows": 30}
 master, slave = pty.openpty()
-child = subprocess.Popen(command, stdin=slave, stderr=slave, stdout=subprocess.PIPE)
+fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", size["rows"], size["columns"], 0, 0))
+child = subprocess.Popen(command, stdin=slave, stderr=slave, stdout=slave if size.get("full") else subprocess.PIPE)
 os.close(slave)
 poller = selectors.DefaultSelector()
 poller.register(master, selectors.EVENT_READ, "terminal")
-poller.register(child.stdout, selectors.EVENT_READ, "stdout")
+if child.stdout is not None:
+    poller.register(child.stdout, selectors.EVENT_READ, "stdout")
 terminal = ""
 stdout = ""
 seen = ""
@@ -26,10 +29,11 @@ try:
             if key.data == "terminal":
                 terminal += text
                 seen += text
-                if steps and steps[0]["wait"] in seen:
+                while steps and steps[0]["wait"] in seen:
                     step = steps.pop(0)
+                    end = seen.index(step["wait"]) + len(step["wait"])
                     os.write(master, step["keys"].encode())
-                    seen = ""
+                    seen = seen[end:]
             else:
                 stdout += text
     if child.poll() is None:

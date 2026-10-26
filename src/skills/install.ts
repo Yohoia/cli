@@ -1,4 +1,5 @@
 import { join, dirname } from "node:path";
+import type { ReportProgress } from "../core/progress.js";
 import { discover } from "./inventory.js";
 import { GitHub, parseSkill, refresh } from "./github.js";
 import { saveState } from "./state.js";
@@ -46,7 +47,12 @@ export async function prepare(
     );
   const files = unpack(await github.archive(source.repo, metadata.commit));
   const entry = files.get("SKILL.md");
-  if (!entry || parseSkill(entry.bytes).name !== metadata.name)
+  const identity = entry ? parseSkill(entry.bytes) : undefined;
+  if (
+    !identity ||
+    identity.name !== metadata.name ||
+    identity.version !== metadata.version
+  )
     throw failure("SKILL_IDENTITY_CHANGED", "归档 Skill 身份与元数据不一致");
   source.metadata = metadata;
   return { repo: source.repo, metadata, files };
@@ -56,6 +62,7 @@ export async function installation(
   github: GitHub,
   names: string[],
   selection: Selection,
+  report: ReportProgress = () => {},
 ): Promise<SkillResult> {
   if (!selection.target.length || !names.length)
     throw failure(
@@ -95,10 +102,17 @@ export async function installation(
     }
   }
   const prepared = new Map<string, Prepared>();
+  report({ completed: 0, total: planned.length, message: "准备下载 Skill" });
   for (const { source } of planned) {
     github.signal.throwIfAborted();
-    if (!prepared.has(source.repo))
+    if (!prepared.has(source.repo)) {
+      report({
+        completed: 0,
+        total: planned.length,
+        message: `下载 ${source.metadata?.name ?? source.repo}`,
+      });
       prepared.set(source.repo, await prepare(source, github));
+    }
   }
   const oldRecords = [...state.records];
   const created: {
@@ -108,6 +122,11 @@ export async function installation(
   const locks: (() => Promise<void>)[] = [];
   try {
     for (const { source, path } of planned) {
+      report({
+        completed: created.length,
+        total: planned.length,
+        message: `写入 ${source.metadata?.name ?? source.repo}`,
+      });
       const contents = prepared.get(source.repo);
       if (!contents)
         throw failure("SKILL_UNAVAILABLE", "缺少准备好的 Skill", 5);
@@ -130,12 +149,20 @@ export async function installation(
           name: contents.metadata.name,
           path,
           commit: contents.metadata.commit,
+          ...(contents.metadata.version
+            ? { version: contents.metadata.version }
+            : {}),
         });
         items.push({
           repo: source.repo,
           ...contents.metadata,
           path,
           status: "installed",
+        });
+        report({
+          completed: created.length,
+          total: planned.length,
+          message: `已写入 ${contents.metadata.name}`,
         });
       } finally {
         await rm(stage, { recursive: true, force: true });

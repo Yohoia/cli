@@ -28,7 +28,7 @@ The package is marked private in `package.json` and is not published to npm. Fro
 pnpm install --frozen-lockfile
 pnpm check
 pnpm pack --pack-destination artifacts
-npm install --global ./artifacts/yoho-cli-0.4.1.tgz
+npm install --global ./artifacts/yoho-cli-0.6.3.tgz
 yoho --version
 yoho --help
 ```
@@ -36,7 +36,7 @@ yoho --help
 If the system-wide npm prefix is not writable, install into a user directory:
 
 ```bash
-npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.4.1.tgz
+npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.6.3.tgz
 ```
 
 Add `$HOME/.local/bin` to `PATH` if it is not already there.
@@ -61,6 +61,14 @@ For article commands, configure or accept the default PageHush service, authoriz
 yoho auth login
 yoho blog list
 ```
+
+## Terminal interface
+
+Ink, React, and Ink UI render lists, details, and results. Clack provides menus, loading indicators, and block progress bars for installation, updates, and removal. Progress counts actual destination directories and names the Skill being processed.
+
+Use Space to select, `a` to select or clear all, and `i` to invert a selection. Press Enter to continue or Ctrl+C to cancel. Updates use recorded installation locations. Set `NO_COLOR=1` to disable colors. Redirected output has no progress animation. With `--json`, stdout contains one result; interaction and progress use stderr.
+
+The build bundles dependencies into ESM with `dist/cli.js` as its entry and additional files in `dist/chunks/`. The source has no direct Chalk or Listr2 dependency.
 
 ## How the CLI fits together
 
@@ -153,7 +161,7 @@ yoho blog delete 'ARTICLE_UUID' --yes --if-match 'REVISION_FROM_PREVIEW' --json
 
 `--dry-run` only reads the target. Actual deletion requires both `--yes` and `--if-match`; the server performs an atomic revision check and marks the article as soft-deleted. The record and assets remain available to the service, but the article leaves normal lists, details, and blog reads. Permanent deletion and recovery are not CLI operations.
 
-## Install and update Skills
+## Install, update, and remove Skills
 
 Skill commands use the current user's registered GitHub sources and do not require PageHush authorization. A new configuration starts with these sources:
 
@@ -175,7 +183,7 @@ Sources are saved for the current user and shared across projects. An unavailabl
 
 ### Installation targets
 
-The default scope is the current project. Use `--project-path` to select another project or `--scope user` for the current user's target directories.
+Installation defaults to the current project. Use `--project-path` to select another project or `--scope user` for the current user's target directories.
 
 | Target   | Project scope    | User scope         |
 | -------- | ---------------- | ------------------ |
@@ -183,12 +191,29 @@ The default scope is the current project. Use `--project-path` to select another
 | `agents` | `.agents/skills` | `~/.agents/skills` |
 | `codex`  | `.codex/skills`  | `~/.codex/skills`  |
 
-Interactive selection is available when you omit the names or targets:
+Installation can prompt for names and targets. Updates prompt only for Skills:
 
 ```bash
 yoho skill install
 yoho skill update
 ```
+
+The picker uses a compact list with details for the focused item. Use arrow keys to move, Space to toggle, `a` to select or clear all enabled items, `i` to invert, Enter to confirm, and Ctrl+C to cancel. Long lists scroll, and completed steps collapse to a summary.
+
+`yoho skill list` uses English column headings and displays green `installed` or light-gray `not installed` states. Lists omit section titles and show a footer such as `Total: 3 · 1 installed · 2 not installed`. Versions come from YAML metadata in the root `SKILL.md`, including `metadata.version`:
+
+```yaml
+metadata:
+  version: "0.1.1"
+```
+
+Top-level `version: "0.1.1"` is also supported and takes precedence when both fields exist. The terminal displays `v0.1.1`, or 未标注 when no version is declared. Installed rows show local versions; other rows show repository versions. Use `--target` to include installation paths.
+
+The CLI manages only Skills linked to registered sources or existing installation records. Manually copied Skills match registered names from root `SKILL.md` files. Unrelated third-party Skills without a match or record do not appear in the update menu, update-all results, or installation records. Previously managed installations retain recovery guidance when their source is removed.
+
+`yoho skill update` compares the latest source commit and actual files, then lists only Skills with changes. When everything matches, it displays 无可用更新，Skill 均为最新版. Local edits also count as changes. Selecting a Skill immediately updates all its recorded installation paths, including other projects, without asking for a scope or tool. Unrecorded manual installations are discovered only in the three standard directories under the current project and user home, and associated by a unique root `SKILL.md` name.
+
+Removed, unavailable, ambiguous, and renamed sources produce separate diagnostics and stay outside the choices. Failed checks are never reported as current. Update result tables contain only Skill, status, and version. Status is 已更新 for success or 更新失败 for failure; the version is the latest declaration fetched for the operation. Network, permission, and write failures return a nonzero exit code.
 
 For automation, provide every selection explicitly:
 
@@ -197,14 +222,47 @@ yoho skill install speckit yoho-retro-poster --target claude --target agents
 yoho skill install speckit --scope user --target codex
 yoho skill install speckit --project-path /path/to/project --target agents
 yoho skill list --target claude --target agents --json
+yoho skill update speckit
+yoho skill update --all --json
 yoho skill update speckit --target agents
 yoho skill update speckit yoho-retro-poster --target claude --json
 yoho skill update --all --scope user --target agents --target codex --json
 ```
 
+Explicit `--scope`, `--target`, or `--project-path` options narrow an update to those locations. Without these options, updates use existing installation paths. They do not scan other projects for unrecorded installations or fill missing targets. Version labels are for display; updates still use the latest default-branch commit rather than sorting versions or selecting historical releases.
+
 Installation protects existing target directories and fills only missing targets. Each operation downloads the latest default-branch commit once per source, copies the complete Skill tree without Git metadata, and never runs Skill scripts or installs npm/pip dependencies. Updates treat the repository as authoritative: local edits are overwritten, deleted repository files are restored, and local files absent from the repository are removed. Update failures recover the affected target and continue with other targets; initial batch-install failures roll back the new batch while preserving existing installations.
 
+### Uninstall a Skill while keeping its source
+
+```bash
+# List installed Skills, select one or several, then confirm removal
+yoho skill uninstall
+
+# Remove all recorded locations and installation records; keep the source
+yoho skill uninstall speckit
+
+# Preview directories and installation records without deleting them
+yoho skill uninstall speckit --dry-run
+
+# Explicit confirmation for scripts; accepts names or owner/repo
+yoho skill uninstall speckit yoho-retro-poster --yes
+
+# Remove all managed installations while keeping the catalog
+yoho skill uninstall --all --yes
+```
+
+Run `yoho skill uninstall` without names to choose from installed, managed Skills. Use arrows to move, Space to select one or several, and Enter to continue. Use `a` to select or clear all, `i` to invert, and Ctrl+C to cancel. The picker groups installation locations by Skill and shows their count; confirmation lists the actual directories. Uninstalled and unrelated third-party Skills are excluded. If nothing is installed, the command reports that and exits.
+
+`yoho skill remove` aliases `uninstall`. Uninstall deletes only local files and installation records. It always keeps source registrations: `yoho skill list` still shows the Skill as `not installed`, and you can reinstall it directly. Only `yoho skill source remove owner/repo` removes a source registration; that command keeps installed files.
+
+Uninstall works offline. It includes managed installations in the current project and user directories, plus recorded locations in other projects, without asking for an installation scope. Unrelated third-party Skills are excluded. Manual copies require a unique match between SKILL.md and a locally cached source name. The CLI does not scan unrecorded projects.
+
+Noninteractive calls require `--yes` or `--dry-run`. Providing both still only previews. Interactive confirmation defaults to cancel. If one location fails, completed deletions remain complete, and the failed location's record remains available for retry. Source registrations always remain unchanged. Interrupted backups are reported and preserved. If files were deleted but saving their records failed, retry the command to clear the remaining records.
+
 ## JSON results and exit codes
+
+Human-readable output follows a compact terminal style inspired by Codex CLI. Content shares a left edge. Lists omit section titles and use centered English column headings with aligned columns and separator lines instead of outer borders. An up-to-date result uses one success line. Body text and notes use the terminal foreground color; focus and status use restrained accents. Full IDs, revisions, and paths wrap without truncation. Progress, pickers, details, errors, and operation results share these rules. `NO_COLOR` is supported, and redirected output has no color codes. JSON preserves source availability and full descriptions, with added declared versions and installed target versions. Human-readable installation states do not replace the source states in JSON.
 
 Add `--json` to a business command to receive exactly one result on stdout for both success and failure. Progress, approval URLs, and import notices go to stderr. This keeps the result stream safe for local products and shell scripts.
 
@@ -235,7 +293,7 @@ Add `--json` to a business command to receive exactly one result on stdout for b
 
 The old local-article mode is removed. `--project`, path-based article IDs, `blog update`, MDX creation, and local metadata editing are rejected with a migration message. Keep local source documents and use `yoho blog create <path-to-md>` to upload a new draft; edit existing remote article content and metadata in PageHush.
 
-The CLI does not provide editing of an existing article body, title, or metadata, article withdrawal, article archive or restore, permanent deletion, global project binding, or public npm distribution. Skill uninstall, version rollback, and scheduled updates are also unavailable. The CLI and PageHush API/web version must remain compatible.
+The CLI does not provide editing of an existing article body, title, or metadata, article withdrawal, article archive or restore, permanent deletion, global project binding, or public npm distribution. Skill version rollback and scheduled updates are also unavailable. The CLI and PageHush API/web version must remain compatible.
 
 ## Development and validation
 

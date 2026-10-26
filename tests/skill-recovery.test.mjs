@@ -57,9 +57,13 @@ test("killed update leaves recoverable owner locks and concurrent retries cannot
   let locked = false;
   for (let i = 0; i < 200; i++) {
     try {
-      await access(lock);
-      locked = true;
-      break;
+      const owner = JSON.parse(
+        await readFile(join(lock, "owner.json"), "utf8"),
+      );
+      if (owner.pid === pending.child.pid) {
+        locked = true;
+        break;
+      }
     } catch {}
     await new Promise((done) => setTimeout(done, 5));
   }

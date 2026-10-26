@@ -65,6 +65,7 @@ export async function skillFixture(t) {
     const parts = url.pathname.split("/").filter(Boolean);
     const id = `${parts[1]}/${parts[2]}`;
     const r = repos.get(id);
+    if (r) res.once("finish", () => r.onResponse?.(res.statusCode));
     if (r?.delay) await new Promise((done) => setTimeout(done, r.delay));
     if (!r) {
       res.writeHead(404);
@@ -134,7 +135,12 @@ export async function skillFixture(t) {
       );
     return JSON.parse(out.stdout);
   }
-  async function terminal(args, steps) {
+  async function terminal(
+    args,
+    steps,
+    size = { columns: 100, rows: 30 },
+    json = true,
+  ) {
     const { stdout } = await execute(
       "python3",
       [
@@ -144,13 +150,14 @@ export async function skillFixture(t) {
           await installedCli(),
           "skill",
           ...args,
-          "--json",
+          ...(json ? ["--json"] : []),
         ]),
         JSON.stringify(steps),
+        JSON.stringify({ ...size, full: !json }),
       ],
       {
         cwd: project,
-        env: { ...process.env, ...options.env },
+        env: { ...process.env, ...options.env, TERM: "xterm-256color" },
         maxBuffer: 4000000,
       },
     );

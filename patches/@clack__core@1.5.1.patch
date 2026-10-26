@@ -1,0 +1,13 @@
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 8b099132232e01a7a203682f17dd3ca2fd2bcfe8..861d45b262a429d11a4db70c5f5e3f0fb66fcf79 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -148,7 +148,7 @@ function block({
+   const t = (f, { name: a, sequence: w }) => {
+     const c = String(f);
+     if (isActionKey([c, a, w], "cancel")) {
+-      n && r.write(cursor.show), process.exit(0);
++      n && r.write(cursor.show), process.emit("SIGINT");
+       return;
+     }
+     if (!o) return;

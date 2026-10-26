@@ -1,2 +1,4 @@
 allowBuilds:
   esbuild: true
+patchedDependencies:
+  "@clack/core@1.5.1": patches/@clack__core@1.5.1.patch

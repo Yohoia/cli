@@ -9,7 +9,7 @@ import { remoteFixture } from "./remote-support.mjs";
 import { skillFixture } from "./skill-support.mjs";
 
 const execute = promisify(execFile);
-async function terminal(args, options, width) {
+async function terminal(args, options, width, color = false) {
   const script = `
 import os, sys, json, pty, fcntl, termios, struct, subprocess, select, time
 master, slave = pty.openpty()
@@ -49,7 +49,12 @@ finally:
     ],
     {
       ...options,
-      env: { ...process.env, ...options.env, NO_COLOR: "1" },
+      env: {
+        ...process.env,
+        ...options.env,
+        TERM: "xterm-256color",
+        NO_COLOR: color ? undefined : "1",
+      },
       timeout: 15000,
       maxBuffer: 4_000_000,
     },
@@ -65,29 +70,56 @@ function tableRows(output, width) {
     !output.includes("\u001b"),
     "data must not inject terminal control codes",
   );
-  const lines = output.split("\n").filter((line) => /^[┌├│└]/u.test(line));
-  assert.ok(lines.length > 3, output);
-  const actualWidth = stringWidth(lines[0]);
-  assert.ok(
-    actualWidth <= width,
-    `table width ${actualWidth} exceeds ${width}`,
-  );
+  const lines = output.split("\n");
+  const rule = lines.findIndex((line) => /^  ─+(?:  ─+)+$/u.test(line));
+  assert.ok(rule > 0, output);
+  const widths = lines[rule]
+    .slice(2)
+    .split("  ")
+    .map((cell) => cell.length);
+  const actualWidth = stringWidth(lines[rule]);
+  assert.ok(actualWidth <= width, output);
   const rows = [];
   let current = [];
-  for (const line of lines) {
-    assert.equal(stringWidth(line), actualWidth, line);
-    if (line.startsWith("│")) {
-      line
-        .slice(1, -1)
-        .split("│")
-        .forEach((cell, column) => {
-          current[column] = (current[column] ?? "") + cell.trim();
-        });
-    } else if (current.length) {
-      rows.push(current);
-      current = [];
+  function append(line) {
+    assert.ok(stringWidth(line) <= actualWidth, line);
+    line += " ".repeat(actualWidth - stringWidth(line));
+    const segments = [
+      ...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(
+        line.slice(2),
+      ),
+    ].map((entry) => entry.segment);
+    const values = [];
+    for (const [column, width] of widths.entries()) {
+      let value = "";
+      let used = 0;
+      while (segments.length && used < width) {
+        const segment = segments.shift();
+        used += stringWidth(segment);
+        value += segment;
+      }
+      assert.equal(used, width);
+      values.push(value.trim());
+      if (column < widths.length - 1)
+        if (segments.splice(0, 2).join("") !== "  ") return false;
     }
+    values.forEach((value, column) => {
+      current[column] = (current[column] ?? "") + value;
+    });
+    return true;
   }
+  append(lines[rule - 1]);
+  rows.push(current);
+  current = [];
+  for (const line of lines.slice(rule + 1)) {
+    if (!line) {
+      if (current.length) rows.push(current);
+      current = [];
+    } else if (line.startsWith("  ") && stringWidth(line) <= actualWidth) {
+      if (!append(line)) break;
+    } else break;
+  }
+  if (current.length) rows.push(current);
   return rows;
 }
 
@@ -124,12 +156,19 @@ test("installed blog list renders aligned tables in real terminals and keeps JSO
       width,
     );
     const rows = tableRows(output, width);
-    assert.deepEqual(rows[0], ["文章 ID", "标题", "状态", "发布时间", "版本"]);
-    assert.ok(rows[1][0].includes(data.items[0].id));
-    assert.ok(rows[1][0].includes(data.items[0].shortId));
-    assert.equal(rows[1][1], title);
-    assert.equal(rows[1][2], "草稿");
-    assert.equal(rows[1][3], "未发布");
+    assert.ok(!output.includes("文章列表"), output);
+    assert.deepEqual(rows[0], [
+      "Title",
+      "Status",
+      "Published",
+      "Article ID",
+      "Version",
+    ]);
+    assert.ok(rows[1][3].includes(data.items[0].id));
+    assert.ok(rows[1][3].includes(data.items[0].shortId));
+    assert.equal(rows[1][0].normalize("NFC"), title.normalize("NFC"));
+    assert.equal(rows[1][1], "草稿");
+    assert.equal(rows[1][2], "未发布");
     assert.equal(rows[1][4], data.items[0].revision);
     assert.match(output, /下一页：2/);
     assert.ok(
@@ -137,6 +176,11 @@ test("installed blog list renders aligned tables in real terminals and keeps JSO
       "graphemes must remain intact when wrapped",
     );
   }
+  const shown = await runCli(["blog", "show", data.items[0].id], options);
+  assert.equal(shown.code, 0, shown.stderr);
+  assert.ok(shown.stdout.includes(data.items[0].id));
+  assert.ok(shown.stdout.includes(data.items[0].revision));
+  assert.ok(shown.stdout.endsWith("正文\n"));
 });
 
 test("installed skill tables retain source, installation state, failures and empty state", async (t) => {
@@ -158,29 +202,54 @@ test("installed skill tables retain source, installation state, failures and emp
       width,
     );
     const rows = tableRows(output, width);
-    assert.deepEqual(rows[0], ["Skill", "来源", "状态", "说明", "安装位置"]);
+    assert.deepEqual(rows[0], [
+      "Skill",
+      "Source",
+      "Status",
+      "Version",
+      "Location",
+    ]);
     assert.equal(rows[1][0], "speckit");
     assert.equal(rows[1][1], "yohoia/yoho-speckit");
-    assert.equal(rows[1][2], "可安装");
-    assert.equal(rows[1][3], description.replace(/\u001b\[\d+m/g, ""));
+    assert.equal(rows[1][2], "installed");
+    assert.equal(rows[1][3], "未标注");
     const location = rows[1][4].replaceAll(" ", "");
-    assert.ok(location.includes("✓已安装"));
-    assert.ok(location.includes("未安装"));
+    assert.ok(location.includes("✓installed"));
+    assert.ok(location.includes("notinstalled"));
     assert.ok(
       location.includes(
         join(f.project, ".agents/skills/speckit").replaceAll(" ", ""),
       ),
     );
-    assert.match(output, /已知 Skill 数：1/);
+    assert.match(output, /Total: 1 · 1 installed · 0 not installed/);
+    assert.ok(!output.includes("Skill 列表"), output);
+    assert.ok(!output.includes("安装：yoho"), output);
   }
   const json = await f.command(["list", "--target", "agents"]);
   assert.equal(json.data.items[0].description, description);
   assert.equal(json.data.items[0].targets[0].installed, true);
+  await f.command(["source", "add", "yohoia/yoho-retro-poster"]);
+  const colored = await terminal(["skill", "list"], f.options, 80, true);
+  assert.match(colored, /\u001b\[32minstalled\u001b\[(?:0|39)m/u);
+  assert.match(colored, /\u001b\[37mnot installed\u001b\[(?:0|39)m/u);
+  await f.command(["source", "remove", "yohoia/yoho-retro-poster"]);
+  assert.ok(
+    /\u001b\[(?:1;36m|1m\u001b\[36m)/u.test(colored),
+    "interactive headers should use the accent color",
+  );
+  assert.ok(
+    !colored.includes("\u001b[31m"),
+    "source descriptions cannot inject their own terminal colors",
+  );
+  const sources = await terminal(["skill", "source", "list"], f.options, 80);
+  assert.ok(!sources.includes("Skill 来源"), sources);
+  assert.match(sources, /Total: 1/);
+  assert.equal(tableRows(sources, 80)[1][1], "yohoia/yoho-speckit");
   f.repos.get("yohoia/yoho-speckit").status = 503;
   const unavailable = await terminal(["skill", "list"], f.options, 80);
   const unavailableRows = tableRows(unavailable, 80);
-  assert.equal(unavailableRows[1][2], "不可用");
-  assert.ok(unavailableRows[1][3].includes("503"));
+  assert.equal(unavailableRows[1][2], "installed");
+  assert.match(unavailable, /503/);
   await f.command(["source", "remove", "yohoia/yoho-speckit"]);
   const empty = await runCli(["skill", "list"], f.options);
   assert.equal(empty.code, 0, empty.stderr);

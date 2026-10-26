@@ -1,11 +1,30 @@
 import type { Command } from "commander";
+import { z } from "zod";
 import { withSkillState, saveState } from "./state.js";
 import { GitHub, refresh, sourceItem } from "./github.js";
-import { repository, selectionSchema, type SkillResult } from "./model.js";
+import {
+  repository,
+  selectionSchema,
+  type SkillResult,
+  type UpdateScope,
+  failure,
+} from "./model.js";
 import { installation } from "./install.js";
 import { updates } from "./update.js";
-import { interact, installedStatus } from "./interaction.js";
+import { selectInstallation, installedStatus } from "./interaction.js";
+import { selectUpdates } from "./update-selection.js";
 import { roots } from "./files.js";
+import { withProgress, note } from "../cli/presentation.js";
+import { renderText } from "../cli/output.js";
+import { AppError } from "../core/errors.js";
+import { prompt, terminal } from "./prompt.js";
+import { uninstall, uninstallPreview } from "./uninstall.js";
+import { selectUninstall } from "./uninstall-selection.js";
+const uninstallOptions = z.object({
+  all: z.boolean().default(false),
+  yes: z.boolean().default(false),
+  dryRun: z.boolean().default(false),
+});
 function selectionOptions(command: Command) {
   return command
     .option(
@@ -24,16 +43,76 @@ export function registerSkills(
 ) {
   const skill = program
     .command("skill")
-    .description("管理 Skill 来源、安装和更新");
+    .description("管理 Skill 来源、安装、更新和删除");
+  skill
+    .command("uninstall")
+    .alias("remove")
+    .description("卸载本地 Skill 和安装记录，保留来源登记")
+    .argument("[skills...]", "Skill 名称或 owner/repo")
+    .option("--all", "卸载全部受管 Skill，保留来源")
+    .option("--yes", "确认删除本地文件和安装记录")
+    .option("--dry-run", "预览将删除的目录与安装记录，不执行删除")
+    .action(async (names: string[], _options: unknown, command: Command) =>
+      publish(
+        await withSkillState(async (state) => {
+          const options = uninstallOptions.parse(command.opts());
+          const plan = await selectUninstall(state, names, options.all, signal);
+          if (options.dryRun) return uninstallPreview(plan);
+          if (plan.targets.length && !options.yes) {
+            if (!terminal())
+              throw failure(
+                "CONFIRMATION_REQUIRED",
+                "删除本地文件与安装记录必须提供 --yes；可先用 --dry-run 预览",
+                2,
+              );
+            process.stderr.write(
+              renderText(
+                { kind: "skills", data: uninstallPreview(plan) },
+                process.stderr.columns ?? 100,
+                process.stderr,
+              ),
+            );
+            const [choice] = await prompt(
+              "确认删除以上文件和安装记录？",
+              [
+                { id: "cancel", label: "取消（默认）" },
+                { id: "delete", label: "确认删除" },
+              ],
+              false,
+              signal,
+            );
+            if (choice !== "delete")
+              throw new AppError({
+                code: "CANCELLED",
+                message: "操作已取消",
+                exitCode: 130,
+              });
+          }
+          return withProgress("正在删除 Skill…", (report) =>
+            uninstall(state, plan, signal, report),
+          );
+        }),
+      ),
+    );
   selectionOptions(skill.command("list")).action(
     async (_options: unknown, command: Command) =>
       publish(
         await withSkillState(async (state) => {
           const selection = selectionSchema.parse(command.opts());
+          const showLocations = selection.target.length > 0;
+          const automatic =
+            !showLocations &&
+            command.getOptionValueSource("scope") !== "cli" &&
+            !selection.projectPath;
+          if (!selection.target.length && !automatic)
+            selection.target = ["claude", "agents", "codex"];
           const items = await installedStatus(
-            await refresh(state, new GitHub(signal)),
+            await withProgress("正在获取 Skill 列表…", () =>
+              refresh(state, new GitHub(signal)),
+            ),
             selection,
             state,
+            automatic,
           );
           return {
             operation: "list",
@@ -41,6 +120,7 @@ export function registerSkills(
             total: items.filter((x) => x.name).length,
             available: items.filter((x) => x.status === "available").length,
             unknown: items.filter((x) => !x.name).length,
+            showLocations,
           };
         }),
       ),
@@ -82,7 +162,9 @@ export function registerSkills(
   source.command("refresh").action(async () =>
     publish(
       await withSkillState(async (state) => {
-        const items = await refresh(state, new GitHub(signal));
+        const items = await withProgress("正在检查 Skill 来源…", () =>
+          refresh(state, new GitHub(signal)),
+        );
         return {
           operation: "refresh",
           items,
@@ -102,20 +184,46 @@ export function registerSkills(
         publish(
           await withSkillState(async (state) => {
             const github = new GitHub(signal);
-            const input = await interact(
-              kind,
+            const selection = selectionSchema.parse(command.opts());
+            if (kind === "update") {
+              const constrained =
+                selection.target.length > 0 ||
+                command.getOptionValueSource("scope") === "cli" ||
+                !!selection.projectPath;
+              if (constrained && !selection.target.length)
+                selection.target = ["claude", "agents", "codex"];
+              const scope: UpdateScope = constrained
+                ? { kind: "selected", selection }
+                : { kind: "automatic", all: selection.all };
+              const input = await selectUpdates(state, github, names, scope);
+              if (input.kind === "complete") return input.result;
+              if (input.paths.length)
+                process.stderr.write(
+                  note(
+                    `更新已有安装位置（以仓库内容覆盖本地修改）：\n${input.paths.join("\n")}`,
+                    process.stderr.columns ?? 100,
+                  ) + "\n",
+                );
+              return withProgress("正在更新 Skill…", (report) =>
+                updates(state, github, input.names, input.scope, report),
+              );
+            }
+            const input = await selectInstallation(
               state,
               github,
               names,
-              selectionSchema.parse(command.opts()),
+              selection,
               command.getOptionValueSource("scope") === "cli",
             );
             process.stderr.write(
-              `${kind === "update" ? "更新将以仓库内容覆盖本地修改" : "安装目标"}：\n${(await roots(input.selection)).join("\n")}\n`,
+              note(
+                `安装目标：\n${(await roots(input.selection)).join("\n")}`,
+                process.stderr.columns ?? 100,
+              ) + "\n",
             );
-            return kind === "install"
-              ? installation(state, github, input.names, input.selection)
-              : updates(state, github, input.names, input.selection);
+            return withProgress("正在安装 Skill…", (report) =>
+              installation(state, github, input.names, input.selection, report),
+            );
           }),
         ),
     );

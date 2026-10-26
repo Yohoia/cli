@@ -23,6 +23,7 @@ import {
 import { articleSchema, listSchema } from "../remote/models.js";
 import { registerSkills } from "../skills/commands.js";
 import type { SkillResult } from "../skills/model.js";
+import { withProgress, paint } from "./presentation.js";
 
 const optionsSchema = z.object({
   server: z.string().optional(),
@@ -81,10 +82,14 @@ export async function runProgram({
   }
   const program = new Command()
     .name("yoho")
-    .description("管理远程博客文章与 GitHub Skill")
     .version(manifest.version)
     .option("--server <url>", "PageHush 服务地址")
     .option("--json", "输出 JSON 结果")
+    .configureHelp({
+      styleTitle: (value) => paint(value, "strong"),
+      styleOptionTerm: (value) => paint(value, "accent"),
+      styleSubcommandTerm: (value) => paint(value, "strong"),
+    })
     .configureOutput({ writeErr: () => undefined })
     .exitOverride();
   const auth = program.command("auth").description("设备授权管理");
@@ -163,7 +168,9 @@ export async function runProgram({
         kind: "list",
         data: remoteResponse(
           listSchema,
-          await (await client(command)).request(`/v1/cli/articles?${query}`),
+          await withProgress("正在读取文章列表…", async () =>
+            (await client(command)).request(`/v1/cli/articles?${query}`),
+          ),
         ),
       };
     });

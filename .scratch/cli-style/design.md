@@ -1,0 +1,56 @@
+# Yoho CLI 终端视觉升级
+
+日期：2026-10-25。范围为整个 CLI 的视觉升级，沿用命令、数据与选择流程。用户希望参考 Codex 或 Claude Code CLI，并指出居中标题与左侧提示分离的问题。
+
+## 设计判断
+
+主要任务是在终端查看文章和 Skill、选择安装或更新，并快速辨认结果。现状使用按终端全宽居中的标题、按内容宽度排列的表格、固定 ANSI 灰色的说明文字，三者缺少共同的左边线，且固定灰色在用户终端主题中对比度不足。
+
+比较方向：
+
+- 整理：保留外框表格，仅统一标题与说明的左边线。改动最少，表格仍占较多视觉权重。
+- 升级：采用接近 Codex 的简洁排版；左对齐标题与内容、无外框对齐列、紧凑状态提示、保留居中表头。正文继承终端前景色，状态和焦点使用少量强调色。这是本轮采用的方向，兼顾原先的表格比较需求。
+- 重塑：采用类似 Claude 对话界面的分区和逐项卡片。会把原有列表比较改成逐项阅读；本轮保留列布局。
+
+共享规则落在 `src/cli/presentation.tsx`、`src/cli/table.tsx`，选择器使用同一语义配色，帮助与错误输出也接入共享样式。无更新结果只输出一行成功提示；不为这种结果单独展示标题。字体和背景由终端提供，不设置应用专属字体。
+
+用户随后明确列表不保留段落标题，所有表头使用英文。当前 Skill 列表采用 Skill、Source、Status、Version，显示路径时增加 Location；Status 为绿色 `installed` 或浅灰白色 `not installed`，底部显示 `Total: 3 · 1 installed · 2 not installed`，不再提示安装和更新命令。文章及来源列表也省略段落标题，根帮助删除简介。未安装状态单独使用终端 ANSI 白色角色，其余正文继续继承前景色；`NO_COLOR` 与重定向仍使用纯文本。
+
+## 官方 CLI 的实际检查
+
+通过 REPL 获取可用应用后，工具拒绝访问系统 Terminal 应用。改为独立 PTY 启动本机官方 CLI，以终端模拟器记录可见屏幕，进入本地 `/theme` 菜单后退出，不发送任务或修改主题。
+
+- Codex：`0.163.0`。基础界面使用 Rust、Ratatui、Crossterm；语义配色与终端调色板检测是独立模块。`/theme` 显示语法主题选择与差异预览，本机显示 `catppuccin-mocha (current)`。源码会检测默认前景色、背景色及真彩色 / ANSI 256 / ANSI 16 能力，以调整强调、选择和状态颜色。
+- Claude Code：`2.1.310`。实际 `/theme` 菜单提供 Auto、Dark、Light、色盲友好、ANSI-only 及自定义主题，并带语法预览。发行包为本机原生可执行文件；官方仓库没有可供本项目直接复用的完整运行时 UI 源码，本轮不推断其内部渲染框架。
+- Yoho：TypeScript、Commander 和自有 ANSI 输出与局部选择器重绘。借鉴共同的排版与语义角色，不共享两个产品的配置文件，也没有声称复用它们的渲染器。当前不提供 `/theme` 或自动 RGB 背景探测；正文继承终端颜色及 `NO_COLOR` / `TERM=dumb` 退化规则。
+
+检查时遇到 Codex 新版本提示，输入误触更新选项后已终止其进程组，随后核对仍为 `0.163.0`。检查脚本已增加更新提示时只允许 Escape 的拦截，并对后续 Codex 进程禁用启动更新检查，避免误触。
+
+## 来源与证据
+
+- [Codex 0.163.0 语义样式](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/tui/src/style.rs)
+- [Codex 终端调色板](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/tui/src/terminal_palette.rs)
+- [Codex 选择器样式](https://github.com/openai/codex/blob/rust-v0.163.0/codex-rs/tui/src/bottom_pane/picker_style.rs)
+- [Claude Code 官方仓库](https://github.com/anthropics/claude-code)
+- `artifacts/cli-style/agents/` 保存实际 PTY 屏幕记录，HTML/PNG 由屏幕单元格渲染，字体和颜色映射会受预览环境影响，不是原生 Terminal 截图。
+- `artifacts/cli-style/output.json`、`output.txt`、`preview.html`、`preview.png` 来自隔离安装包 CLI，覆盖列表、无更新、选择、更新成功及错误状态。选择界面的视口为 80 列。
+
+## 验证
+
+19 项相关安装包与 PTY 检查通过，覆盖 50 / 80 列、中文与组合字符、完整字段、普通与彩色输出、`NO_COLOR`、终端转义清理、多选、取消和无更新单行结果。类型、格式检查通过。独立视觉评审一轮，未发现需要追加修改的视觉问题；键盘和重绘由主代理的真实 PTY 检查验证。
+
+本次没有新增业务流程或交互动效；沿用查询加载与选择器重绘。删除居中装饰标题和表格外框，将来源统计改为短摘要。后续若需要可切换的 Codex / Claude 两套主题，应作为明确的展示设置实现，不能宣称两个官方产品有可共享的样式配置。
+
+## 0.5.0：采用 Ink 与 Clack
+
+用户确认保留 Commander，使用 Ink + React + Ink UI 统一列表、详情及结果，Clack 接管安装和更新选择流程；不添加 Chalk 或 Listr2 直接依赖。用户随后要求安装及更新显示进度条。
+
+普通命令使用 Ink `renderToString` 渲染 React 树和 Yoga 布局；状态组件使用 Ink UI `StatusMessage` 和共享主题，不为一次性输出创建输入循环。Clack 独占交互与进度期间的 stdin / stderr，结束后再显示 Ink 结果。帮助仍由 Commander 组织，少量文字样式使用 Node.js 原生 `styleText`。
+
+进度条按实际目标目录计数。来源检查和尚未形成计划的阶段使用 spinner，形成计划后切换为 Clack progress，下载和写入时显示当前 Skill，完成后显示已处理数量。按已处理位置计数包含成功、跳过或失败，最终逐目标结果说明各位置状态；失败时不显示成功完成提示。非 TTY 和 TERM=dumb 不播放动画，JSON 通道保持不变。
+
+构建使用 ESM 和代码分割，完整分发 dist 目录。可选的 React DevTools 保持为动态导入，不作为普通运行依赖。Clack 1.5.1 core 的直接退出行为通过仓库补丁改为 SIGINT，保留业务恢复能力；说明见 patches/README.md。
+
+0.5.0 验证：94 项全量回归与最终 14 项针对性检查通过。实际 80 列 PTY 预览位于 artifacts/cli-style/preview-0.5.0.png；一轮独立视觉复核未发现偏离确认目标的问题。键盘选择、取消、终端交接及恢复由真实 PTY 测试覆盖。
+
+2026-10-26：用户明确选择方块进度条。共享 Clack progress 使用 style: block，适用于安装、更新与删除；保持按位置计数、当前 Skill 和取消行为。0.6.1 的真实终端预览为 artifacts/cli-style/preview-0.6.1.png，10 项相关回归通过。

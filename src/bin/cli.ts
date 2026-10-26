@@ -2,11 +2,14 @@
 import { runProgram } from "../cli/program.js";
 import { renderText } from "../cli/output.js";
 import { normalizeError } from "../core/errors.js";
+import { SkillOperationError } from "../skills/model.js";
+import { feedback } from "../cli/presentation.js";
 
 async function main(): Promise<void> {
   const controller = new AbortController();
   const cancel = () => controller.abort();
   process.once("SIGINT", cancel);
+  process.once("SIGTERM", cancel);
   const argv = process.argv.slice(2);
   const json = argv
     .slice(0, argv.indexOf("--") === -1 ? undefined : argv.indexOf("--"))
@@ -27,10 +30,28 @@ async function main(): Promise<void> {
       process.stdout.write(
         `${JSON.stringify({ ok: false, error: { code: failure.code, message: failure.message }, ...(failure.data === undefined ? {} : { data: failure.data }) })}\n`,
       );
-    else process.stderr.write(`${failure.code}: ${failure.message}\n`);
+    else {
+      if (failure instanceof SkillOperationError)
+        process.stderr.write(
+          renderText(
+            { kind: "skills", data: failure.result },
+            process.stderr.columns ?? 100,
+            process.stderr,
+          ),
+        );
+      process.stderr.write(
+        feedback(
+          `${failure.code}: ${failure.message}`,
+          "error",
+          process.stderr.columns ?? 100,
+          process.stderr,
+        ),
+      );
+    }
     process.exitCode = failure.exitCode;
   } finally {
     process.removeListener("SIGINT", cancel);
+    process.removeListener("SIGTERM", cancel);
   }
 }
 

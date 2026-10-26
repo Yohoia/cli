@@ -15,6 +15,8 @@ const execute = promisify(execFile);
 export class GitHub {
   readonly origin: string;
   private token: string | undefined;
+  private readonly metadataCache = new Map<string, Promise<Metadata>>();
+  private readonly archiveCache = new Map<string, Promise<Buffer>>();
   constructor(readonly signal: AbortSignal) {
     const url = new URL(
       process.env.YOHO_SKILL_GITHUB_API ?? "https://api.github.com",
@@ -77,6 +79,14 @@ export class GitHub {
     return response.json();
   }
   async metadata(repo: string): Promise<Metadata> {
+    let result = this.metadataCache.get(repo);
+    if (!result) {
+      result = this.readMetadata(repo);
+      this.metadataCache.set(repo, result);
+    }
+    return result;
+  }
+  private async readMetadata(repo: string): Promise<Metadata> {
     const { default_branch: branch } = z
       .object({ default_branch: z.string().min(1) })
       .parse(await this.json(`/repos/${repo}`));
@@ -91,6 +101,15 @@ export class GitHub {
     return { ...parseSkill(Buffer.from(content.content, "base64")), commit };
   }
   async archive(repo: string, commit: string): Promise<Buffer> {
+    const key = `${repo}@${commit}`;
+    let result = this.archiveCache.get(key);
+    if (!result) {
+      result = this.readArchive(repo, commit);
+      this.archiveCache.set(key, result);
+    }
+    return result;
+  }
+  private async readArchive(repo: string, commit: string): Promise<Buffer> {
     let response = await this.response(`/repos/${repo}/tarball/${commit}`);
     if (!response.ok) {
       const location = response.headers.get("location");
@@ -139,9 +158,22 @@ export function parseSkill(input: string | Uint8Array) {
   const match = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(text);
   if (!match?.[1]) throw failure("SKILL_INVALID", "Skill 缺少有效 frontmatter");
   try {
-    return metadataSchema.omit({ commit: true }).parse(parse(match[1]));
+    const document = metadataSchema
+      .omit({ commit: true })
+      .extend({
+        metadata: z
+          .object({ version: metadataSchema.shape.version })
+          .optional(),
+      })
+      .parse(parse(match[1]));
+    const version = document.version ?? document.metadata?.version;
+    return {
+      name: document.name,
+      description: document.description,
+      ...(version ? { version } : {}),
+    };
   } catch {
-    throw failure("SKILL_INVALID", "Skill name 或 description 无效");
+    throw failure("SKILL_INVALID", "Skill name、description 或 version 无效");
   }
 }
 export async function refresh(

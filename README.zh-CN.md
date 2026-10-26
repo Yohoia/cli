@@ -28,7 +28,7 @@ Yoho 为终端用户或本地产品提供一套确定性的命令接口，处理
 pnpm install --frozen-lockfile
 pnpm check
 pnpm pack --pack-destination artifacts
-npm install --global ./artifacts/yoho-cli-0.4.1.tgz
+npm install --global ./artifacts/yoho-cli-0.6.3.tgz
 yoho --version
 yoho --help
 ```
@@ -36,7 +36,7 @@ yoho --help
 如果系统级 npm 目录不可写，可以安装到用户目录：
 
 ```bash
-npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.4.1.tgz
+npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.6.3.tgz
 ```
 
 如果 `$HOME/.local/bin` 尚未加入 `PATH`，请先加入。
@@ -61,6 +61,14 @@ yoho skill install speckit --target codex
 yoho auth login
 yoho blog list
 ```
+
+## 终端界面
+
+列表、详情和结果由 Ink、React 和 Ink UI 统一渲染。安装、更新与删除使用 Clack 交互及方块进度条，进度按实际目标目录计数，并显示当前处理的 Skill。检查来源时使用加载提示。
+
+多选支持空格选择、`a` 全选或清空、`i` 反选，按 Enter 继续，按 Ctrl+C 取消。更新自动处理已记录的安装位置。设置 `NO_COLOR=1` 可关闭颜色；重定向输出时不播放进度动画。`--json` 的 stdout 始终只有一个结果，交互与进度写入 stderr。
+
+构建产物为自带依赖的 ESM 包，入口为 `dist/cli.js`，与 `dist/chunks/` 一起分发。源码未直接依赖 Chalk 或 Listr2。
 
 ## 命令如何协作
 
@@ -153,7 +161,7 @@ yoho blog delete 'ARTICLE_UUID' --yes --if-match 'REVISION_FROM_PREVIEW' --json
 
 `--dry-run` 只读取目标。实际删除必须同时提供 `--yes` 和 `--if-match`；服务器原子检查版本后设置软删除标记。文章记录和素材仍由服务保留，但文章会从普通列表、详情和博客读取中隐藏。CLI 不提供永久删除和恢复操作。
 
-## 安装和更新 Skill
+## 安装、更新和删除 Skill
 
 Skill 命令使用当前用户登记的 GitHub 来源，不需要 PageHush 授权。新配置默认包含以下来源：
 
@@ -175,7 +183,7 @@ yoho skill source remove owner/repo
 
 ### 安装目标
 
-默认范围为当前项目。使用 `--project-path` 指定其他项目，使用 `--scope user` 安装到当前用户的目标目录。
+安装默认范围为当前项目。使用 `--project-path` 指定其他项目，使用 `--scope user` 安装到当前用户的目标目录。
 
 | 目标     | 项目级目录       | 用户级目录         |
 | -------- | ---------------- | ------------------ |
@@ -183,12 +191,29 @@ yoho skill source remove owner/repo
 | `agents` | `.agents/skills` | `~/.agents/skills` |
 | `codex`  | `.codex/skills`  | `~/.codex/skills`  |
 
-省略名称或目标时，可以进入交互式选择：
+安装时可以交互选择名称和目标；更新时只需选择 Skill：
 
 ```bash
 yoho skill install
 yoho skill update
 ```
+
+选择界面使用紧凑列表与焦点详情：方向键移动，Space 勾选，`a` 全选或清空，`i` 反选，Enter 确认，Ctrl+C 取消。列表较长时自动滚动，完成的步骤收起为摘要。
+
+`yoho skill list` 使用英文表头，安装状态为绿色 `installed` 或浅灰色 `not installed`。列表省略段落标题，底部显示 `Total: 3 · 1 installed · 2 not installed` 形式的数量统计。版本来自根 `SKILL.md` 的 YAML 元数据，支持 `metadata.version`：
+
+```yaml
+metadata:
+  version: "0.1.1"
+```
+
+也兼容顶层的 `version: "0.1.1"`，两处同时声明时以顶层为准。终端统一显示为 `v0.1.1`；缺少版本时显示“未标注”。已安装项显示本机版本，未安装项显示仓库版本。指定 `--target` 时还会展示对应安装位置。
+
+CLI 仅管理已登记来源及已有安装记录对应的 Skill。手动复制的 Skill 按根 `SKILL.md` 名称匹配登记来源；无匹配且无记录的第三方 Skill 不进入更新菜单、`--all` 结果或安装记录。来源被移除的历史安装仍保留恢复提示。
+
+`yoho skill update` 比较来源最新提交及实际文件内容，只列出有更新的 Skill；全部一致时显示“无可用更新，Skill 均为最新版”。本地修改也视为需要同步。选中后直接更新该 Skill 的所有已记录安装位置，包括其他项目，不再询问范围或工具。未记录的手动安装只在当前项目和当前用户的三个标准目录中发现，并按根 `SKILL.md` 的名称唯一关联登记来源。
+
+来源移除、不可用、同名歧义或名称变化会单独报告，不列入可选更新，也不会误报为最新版。更新结果表格仅包含 Skill、状态与版本，状态为“已更新”或“更新失败”，版本为本次获取的最新声明版本。发生网络、权限或写入失败时返回对应非零退出码。
 
 自动化调用应完整提供选择参数：
 
@@ -197,14 +222,47 @@ yoho skill install speckit yoho-retro-poster --target claude --target agents
 yoho skill install speckit --scope user --target codex
 yoho skill install speckit --project-path /path/to/project --target agents
 yoho skill list --target claude --target agents --json
+yoho skill update speckit
+yoho skill update --all --json
 yoho skill update speckit --target agents
 yoho skill update speckit yoho-retro-poster --target claude --json
 yoho skill update --all --scope user --target agents --target codex --json
 ```
 
+更新时显式提供 `--scope`、`--target` 或 `--project-path` 可以收窄到指定位置；不提供这些选项则自动使用已有安装位置，不扫描其他项目寻找未记录的安装，也不补装缺失目标。版本号用于展示，更新内容仍固定为默认分支最新提交，不按版本号排序或选择历史版本。
+
 安装会保护已有目标目录，只补齐缺失目标。每次操作按来源获取默认分支最新提交，同一来源只下载一次；复制完整 Skill 树但排除 Git 元数据，也不会运行 Skill 脚本或安装 npm/pip 依赖。更新以仓库为准：覆盖本地修改、恢复仓库中被删除的文件，并删除仓库没有的本地文件。更新失败时恢复受影响的目标并继续处理其他目标；首次批量安装失败时回滚本批新增内容，同时保留原有安装。
 
+### 卸载 Skill，保留来源
+
+```bash
+# 展示已安装 Skill 的列表，单选或多选后确认卸载
+yoho skill uninstall
+
+# 指定 Skill；删除它所有已记录位置及安装记录，保留来源
+yoho skill uninstall speckit
+
+# 只查看将删除的目录与安装记录
+yoho skill uninstall speckit --dry-run
+
+# 脚本中明确确认删除；支持多个名称或 owner/repo
+yoho skill uninstall speckit yoho-retro-poster --yes
+
+# 卸载全部受管 Skill，保留来源列表
+yoho skill uninstall --all --yes
+```
+
+`yoho skill uninstall` 不带名称时展示已安装的受管 Skill 多选列表；上下键移动、空格勾选，选一项或多项后按 Enter 继续，`a` 全选或清空、`i` 反选、Ctrl+C 取消。列表按 Skill 合并安装位置并显示数量，确认时展开实际目录；未安装项和不受管的第三方 Skill 不列入可选项。没有已安装项时直接提示并退出。
+
+`yoho skill remove` 是 `uninstall` 的别名。卸载只删除本地文件和安装记录，始终保留来源登记；`yoho skill list` 仍展示该 Skill，状态为 `not installed`，可以直接重新安装。只有 `yoho skill source remove owner/repo` 会移除来源登记，这不会删除已安装文件。
+
+删除完全离线，默认处理当前项目、用户标准目录中的受管安装，以及其他项目的已记录位置，不再询问安装范围。没有来源匹配且没有记录的第三方 Skill 不进入删除范围。未记录的手动副本需要本地缓存的来源名称与 SKILL.md 名称唯一对应；CLI 不会扫描未记录的其他项目。
+
+非交互调用必须添加 `--yes`，或使用 `--dry-run` 预览；两者同时提供仍只预览。交互确认默认取消。某个位置失败时，其他已删除位置保留结果，失败位置的记录保留以供重试，来源始终保持不变。发生中断备份时先报告恢复位置，不自动清除备份。文件已经删除但记录写入失败时会报告错误，重试可清理残留记录。
+
 ## JSON 结果和退出码
+
+普通输出采用接近 Codex CLI 的简洁风格：内容统一左对齐，列表使用英文居中表头与对齐列，省略段落标题，使用列分隔线并省去外框。无更新时直接显示一行成功提示。正文和辅助文字沿用终端前景色，强调色用于焦点与状态，支持 `NO_COLOR`，重定向时不输出颜色。完整 ID、版本和路径保留换行；查询进度、选择菜单、详情、错误及操作结果使用同一套视觉规则。JSON 保留来源可用性状态和完整说明，另提供声明版本及各目标的安装版本；普通列表的安装状态不替换 JSON 中的来源状态。
 
 为业务命令添加 `--json` 后，成功和失败都会向 stdout 输出一个结果，每次调用只有一个 JSON 结果。进度、批准网址和导入提示写入 stderr，便于本地产品和脚本稳定读取结果。
 
@@ -232,7 +290,7 @@ yoho skill update --all --scope user --target agents --target codex --json
 
 旧的本地文章模式已经移除。`--project`、路径型文章标识、`blog update`、MDX 创建和本地元数据编辑会返回迁移提示。请保留本地源文档，使用 `yoho blog create <path-to-md>` 上传新草稿；已有远程文章的正文和元数据请在 PageHush 中编辑。
 
-CLI 不提供已有文章正文、标题或元数据的编辑，不提供文章撤回、归档或恢复、永久删除、全局项目绑定或公开 npm 分发。Skill 也不支持卸载、版本回退或定时更新。CLI 与 PageHush API/网页版本需要保持兼容。
+CLI 不提供已有文章正文、标题或元数据的编辑，不提供文章撤回、归档或恢复、永久删除、全局项目绑定或公开 npm 分发。Skill 也不支持版本回退或定时更新。CLI 与 PageHush API/网页版本需要保持兼容。
 
 ## 开发和验收
 

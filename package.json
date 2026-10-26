@@ -1,11 +1,11 @@
 {
   "name": "yoho-cli",
-  "version": "0.4.1",
+  "version": "0.6.3",
   "private": true,
-  "description": "Manage PageHush articles and install or update GitHub Agent Skills",
+  "description": "Manage PageHush articles and install, update, or remove GitHub Agent Skills",
   "type": "module",
   "bin": {
-    "yoho": "dist/cli.cjs"
+    "yoho": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -26,13 +26,18 @@
     "prepack": "pnpm build"
   },
   "devDependencies": {
+    "@clack/prompts": "1.8.1",
+    "@inkjs/ui": "2.0.0",
     "@types/mdast": "4.0.4",
     "@types/node": "^24.19.2",
+    "@types/react": "19.3.0",
     "commander": "^15.0.0",
     "esbuild": "^0.28.2",
+    "ink": "8.0.0",
     "micromark": "4.0.3",
     "parse5": "7.3.0",
     "prettier": "^3.9.10",
+    "react": "19.3.1",
     "remark-parse": "11.0.0",
     "string-width": "^8.3.0",
     "typescript": "^7.0.2",
