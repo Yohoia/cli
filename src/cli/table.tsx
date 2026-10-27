@@ -38,7 +38,37 @@ export function Table<Row>({
       width: Math.max(minimum, Math.min(column.maxWidth, natural)),
     };
   });
-  while (cells.reduce((sum, cell) => sum + cell.width + 2, 0) > width) {
+  const gaps = Math.max(0, cells.length - 1) * 2;
+  if (
+    width < 56 ||
+    cells.reduce((sum, cell) => sum + cell.minimum, gaps) > width
+  ) {
+    const labelWidth = Math.min(
+      Math.max(...cells.map((cell) => stringWidth(cell.heading))),
+      Math.floor(width / 3),
+    );
+    return (
+      <Box flexDirection="column" gap={1}>
+        {rows.map((_, row) => (
+          <Box key={row} flexDirection="column">
+            {cells.map((cell, column) => (
+              <Box key={column} columnGap={2}>
+                <Box width={labelWidth} flexShrink={0}>
+                  <Text {...textStyles.accent}>{cell.heading}</Text>
+                </Box>
+                <Box flexGrow={1} flexShrink={1}>
+                  <Text {...textStyles[cell.tones[row] ?? "normal"]}>
+                    {cell.values[row] ?? ""}
+                  </Text>
+                </Box>
+              </Box>
+            ))}
+          </Box>
+        ))}
+      </Box>
+    );
+  }
+  while (cells.reduce((sum, cell) => sum + cell.width, gaps) > width) {
     const widest = cells.reduce<(typeof cells)[number] | undefined>(
       (best, cell) =>
         cell.width > cell.minimum && (!best || cell.width > best.width)

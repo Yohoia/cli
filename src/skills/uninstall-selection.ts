@@ -27,10 +27,10 @@ export async function selectUninstall(
     return [
       {
         id: source.repo,
-        label:
-          source.name === source.repo
-            ? source.repo
-            : `${source.name} · ${source.repo}`,
+        label: source.name ?? source.repo,
+        ...(source.name && source.name !== source.repo
+          ? { detail: source.repo }
+          : {}),
         status: installed.length ? `${installed.length} 处安装` : "不可用",
         ...(!installed.length
           ? { disabled: blocked.map((target) => target.message).join("\n") }

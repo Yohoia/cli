@@ -35,7 +35,7 @@ export function renderText(
   stream: WriteStream = process.stdout,
 ): string {
   return renderUi(
-    <Output result={result} width={Math.max(8, width - 2)} />,
+    <Output result={result} width={Math.max(6, width - 4)} />,
     width,
     stream,
   );

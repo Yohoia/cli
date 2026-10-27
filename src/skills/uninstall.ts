@@ -1,8 +1,12 @@
 import { dirname } from "node:path";
 import { realpath } from "node:fs/promises";
-import { AppError, normalizeError, systemErrorCode } from "../core/errors.js";
+import { AppError, normalizeError } from "../core/errors.js";
 import type { ReportProgress } from "../core/progress.js";
-import { discoverInstallations, sourcesForInstallation } from "./inventory.js";
+import {
+  discoverInstallations,
+  sourcesForInstallation,
+  reconcileAssociation,
+} from "./inventory.js";
 import {
   backupPath,
   directoryIdentity,
@@ -10,6 +14,10 @@ import {
   rename,
   reserve,
   rm,
+  assertDirectoryIdentity,
+  storeIdentity,
+  assertGuard,
+  type DirectoryGuard,
 } from "./files.js";
 import { saveState } from "./state.js";
 import {
@@ -18,11 +26,17 @@ import {
   type SkillState,
   type SkillResult,
   type SkillItem,
+  type InstallRecord,
 } from "./model.js";
 
 type Identity = Awaited<ReturnType<typeof directoryIdentity>>;
 type Target = { repo: string; name: string; path: string } & (
-  | { kind: "installed"; identity: Identity }
+  | {
+      kind: "installed";
+      identity: Identity;
+      parent: DirectoryGuard;
+      record: InstallRecord | undefined;
+    }
   | { kind: "missing" }
   | { kind: "blocked"; message: string }
 );
@@ -90,7 +104,7 @@ export async function planUninstall(
       : sourcesForInstallation(state, item);
     for (const source of matches.filter((source) => repos.has(source.repo))) {
       const base = { repo: source.repo, name: item.name, path: item.path };
-      if (item.problem || matches.length !== 1)
+      if (item.kind !== "installed" || matches.length !== 1)
         targets.push({
           ...base,
           kind: "blocked",
@@ -98,20 +112,19 @@ export async function planUninstall(
             item.problem ?? "同名 Skill 对应多个来源，未删除无法确认归属的目录",
         });
       else {
-        try {
-          targets.push({
-            ...base,
-            kind: "installed",
-            identity: await directoryIdentity(item.path),
-          });
-        } catch (error) {
-          if (systemErrorCode(error) !== "ENOENT") throw error;
-          targets.push({ ...base, kind: "missing" });
-        }
+        targets.push({
+          ...base,
+          kind: "installed",
+          identity: item.identity,
+          parent: item.parent,
+          record: item.record,
+        });
       }
     }
   }
-  for (const record of records)
+  for (const record of records.filter((record) =>
+    state.records.includes(record),
+  ))
     if (!targets.some((target) => target.path === record.path))
       targets.push({
         repo: record.repo,
@@ -142,14 +155,6 @@ export function uninstallPreview(plan: UninstallPlan): SkillResult {
     total: items.length,
   };
 }
-async function sameDirectory(path: string, identity: Identity) {
-  const current = await directoryIdentity(path);
-  return (
-    current.dev === identity.dev &&
-    current.ino === identity.ino &&
-    current.birthtimeNs === identity.birthtimeNs
-  );
-}
 async function deleteTarget(target: Target, signal: AbortSignal) {
   if (target.kind === "blocked")
     throw failure("SKILL_TARGET_UNSAFE", target.message, 5);
@@ -169,29 +174,32 @@ async function deleteTarget(target: Target, signal: AbortSignal) {
       `目标父目录已被重定向：${target.path}`,
       5,
     );
+  await assertGuard(target.parent);
+  await assertDirectoryIdentity(target.path, target.identity);
   const release = await reserve(target.path);
   const backup = backupPath(target.path);
   let moved = false;
   try {
     signal.throwIfAborted();
-    if (!(await sameDirectory(target.path, target.identity)))
-      throw failure(
-        "SKILL_TARGET_CHANGED",
-        `预览后目标已被替换，未删除：${target.path}`,
-        5,
-      );
+    await assertGuard(target.parent);
+    await assertDirectoryIdentity(target.path, target.identity);
     await rename(target.path, backup);
     moved = true;
-    if (!(await sameDirectory(backup, target.identity)))
-      throw failure(
-        "SKILL_TARGET_CHANGED",
-        `删除期间目标被替换，保留内容：${backup}`,
-        5,
-      );
+    await assertGuard(target.parent);
+    await assertDirectoryIdentity(backup, target.identity);
     signal.throwIfAborted();
     await rm(backup, { recursive: true });
   } catch (error) {
     if (moved && (await exists(backup))) {
+      try {
+        await assertGuard(target.parent);
+      } catch {
+        throw failure(
+          "SKILL_RECOVERY_REQUIRED",
+          `删除未完成，父目录已变化，请核对保留目录：${backup}`,
+          5,
+        );
+      }
       if (await exists(target.path))
         throw failure(
           "SKILL_RECOVERY_REQUIRED",
@@ -231,21 +239,24 @@ export async function uninstall(
       total: plan.targets.length,
       message: `删除 ${target.name}`,
     });
-    let oldRecords = [...state.records];
+    const oldRecords = [...state.records];
     let filesDeleted = false;
     try {
       if (
         target.kind === "installed" &&
         !state.records.some((record) => record.path === target.path)
       ) {
+        await assertGuard(target.parent);
+        await assertDirectoryIdentity(target.path, target.identity);
         state.records.push({
           repo: target.repo,
           name: target.name,
           path: target.path,
           commit: null,
+          associationIdentity: storeIdentity(target.identity),
         });
         await saveState(state);
-        oldRecords = [...state.records];
+        await assertDirectoryIdentity(target.path, target.identity);
       }
       await deleteTarget(target, signal);
       filesDeleted = true;
@@ -264,7 +275,31 @@ export async function uninstall(
       });
     } catch (error) {
       state.records = oldRecords;
-      const problem = normalizeError(error, signal);
+      let problem = normalizeError(error, signal);
+      if (
+        target.kind === "installed" &&
+        (!target.record || target.record.commit === null)
+      ) {
+        await reconcileAssociation(
+          state,
+          {
+            repo: target.repo,
+            name: target.name,
+            path: target.path,
+            commit: null,
+          },
+          target.identity,
+        );
+        try {
+          await saveState(state);
+        } catch {
+          problem = failure(
+            "SKILL_RESTORE_FAILED",
+            `${problem.message}；来源关联状态保存失败，请修复配置目录权限后重试`,
+            5,
+          );
+        }
+      }
       firstFailure ??= problem;
       items.push({
         repo: target.repo,

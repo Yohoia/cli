@@ -89,7 +89,10 @@ export async function selectUpdates(
       ].join(" / ");
       return {
         id: repo,
-        label: `${first?.item.name ?? repo} · ${repo}`,
+        label: first?.item.name ?? repo,
+        ...(first?.item.name && first.item.name !== repo
+          ? { detail: repo }
+          : {}),
         status: latest ? `${old} → ${version(latest)}` : "有更新",
         description: `更新 ${checked.plan.targets.filter((target) => targetMatches(target, repo)).length} 个已有安装位置，覆盖本地修改`,
       };

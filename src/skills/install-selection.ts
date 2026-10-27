@@ -85,7 +85,10 @@ export async function selectInstallation(
               : undefined;
         return {
           id: item.repo,
-          label: `${item.name ?? item.repo} · ${item.repo}`,
+          label: item.name ?? item.repo,
+          ...(item.name && item.name !== item.repo
+            ? { detail: item.repo }
+            : {}),
           status: allInstalled
             ? "✓ 已安装"
             : allOccupied

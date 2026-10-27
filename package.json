@@ -1,6 +1,6 @@
 {
   "name": "yoho-cli",
-  "version": "0.6.6",
+  "version": "0.6.7",
   "private": true,
   "description": "Manage PageHush articles and install, update, or remove Codeup Agent Skills",
   "type": "module",

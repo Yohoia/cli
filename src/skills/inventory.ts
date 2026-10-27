@@ -7,7 +7,14 @@ import {
   canonicalPath,
   isBackupFor,
   directoryIdentity,
+  assertDirectoryIdentity,
+  sameIdentity,
+  storeIdentity,
+  guardDirectory,
+  assertGuard,
+  type DirectoryGuard,
 } from "./files.js";
+import { saveState } from "./state.js";
 import { parseSkill } from "./manifest.js";
 import {
   type SkillState,
@@ -26,6 +33,7 @@ export type Existing = {
       kind: "installed";
       present: true;
       identity: Awaited<ReturnType<typeof directoryIdentity>>;
+      parent: DirectoryGuard;
       problem: undefined;
     }
   | { kind: "recovery" | "unsafe"; present: boolean; problem: string }
@@ -51,6 +59,50 @@ export async function installedVersion(
   } catch {
     return undefined;
   }
+}
+export async function reconcileAssociation(
+  state: SkillState,
+  record: InstallRecord,
+  identity: Awaited<ReturnType<typeof directoryIdentity>>,
+): Promise<void> {
+  let retain = true;
+  const parent = dirname(record.path);
+  async function original(path: string) {
+    try {
+      const info = await lstat(path, { bigint: true });
+      return (
+        info.isDirectory() &&
+        !info.isSymbolicLink() &&
+        sameIdentity(info, identity)
+      );
+    } catch (error) {
+      if (systemErrorCode(error) === "ENOENT") return false;
+      throw error;
+    }
+  }
+  try {
+    if ((await realpath(parent)) === parent) {
+      retain = await original(record.path);
+      if (!retain)
+        for (const name of await readdir(parent))
+          if (
+            isBackupFor(name, record.path) &&
+            (await original(join(parent, name)))
+          ) {
+            retain = true;
+            break;
+          }
+    }
+  } catch {
+    // Keep an identity-bound recovery record when the location cannot be inspected.
+    retain = true;
+  }
+  state.records = state.records.filter((entry) => entry.path !== record.path);
+  if (retain)
+    state.records.push({
+      ...record,
+      associationIdentity: storeIdentity(identity),
+    });
 }
 export async function discover(
   state: SkillState,
@@ -166,10 +218,15 @@ async function discoverAtRoots(
   directories: string[],
 ): Promise<Existing[]> {
   const found: Existing[] = [];
+  let associationsChanged = false;
   for (const root of directories) {
     let names: string[];
+    let parent: DirectoryGuard;
     try {
+      parent = await guardDirectory(root);
+      if (parent.path !== root) continue;
       names = await readdir(root);
+      await assertGuard(parent);
     } catch (error) {
       if (systemErrorCode(error) === "ENOENT") continue;
       const records = state.records.filter(
@@ -190,13 +247,47 @@ async function discoverAtRoots(
     for (const folder of names.sort()) {
       if (folder.startsWith(".yoho-")) continue;
       const path = join(root, folder);
-      const record = state.records.find((record) => record.path === path);
+      let record = state.records.find((record) => record.path === path);
       let name = record?.name ?? folder;
       let present = false;
       try {
-        const info = await lstat(path);
+        const info = await lstat(path, { bigint: true });
         present = info.isDirectory() && !info.isSymbolicLink();
         if (!present) throw new Error(`目标不是普通目录：${path}`);
+        const identity = {
+          dev: info.dev,
+          ino: info.ino,
+          birthtimeNs: info.birthtimeNs,
+        };
+        await assertGuard(parent);
+        const backups = names.filter((candidate) =>
+          isBackupFor(candidate, path),
+        );
+        if (record?.commit === null && !backups.length) {
+          let valid: boolean;
+          if (record.associationIdentity)
+            valid = sameIdentity(identity, record.associationIdentity);
+          else {
+            const entry = join(path, "SKILL.md");
+            const entryInfo = await lstat(entry);
+            valid =
+              entryInfo.isFile() &&
+              !entryInfo.isSymbolicLink() &&
+              parseSkill(await readFile(entry)).name === record.name;
+          }
+          if (!valid) {
+            state.records = state.records.filter((entry) => entry !== record);
+            associationsChanged = true;
+            record = undefined;
+            name = folder;
+            process.stderr.write(
+              `来源关联已失效，已撤销关联并保留当前目录：${path}\n`,
+            );
+          } else if (!record.associationIdentity) {
+            record.associationIdentity = storeIdentity(identity);
+            associationsChanged = true;
+          }
+        }
         if (!record) {
           const entry = join(path, "SKILL.md");
           const info = await lstat(entry);
@@ -204,9 +295,8 @@ async function discoverAtRoots(
             throw new Error("Skill 入口不是普通文件");
           name = parseSkill(await readFile(entry)).name;
         }
-        const backups = names.filter((candidate) =>
-          isBackupFor(candidate, path),
-        );
+        await assertDirectoryIdentity(path, identity);
+        await assertGuard(parent);
         if (backups.length)
           found.push({
             kind: "recovery",
@@ -220,7 +310,8 @@ async function discoverAtRoots(
           found.push({
             kind: "installed",
             present: true,
-            identity: await directoryIdentity(path),
+            identity,
+            parent,
             path,
             name,
             record,
@@ -254,6 +345,7 @@ async function discoverAtRoots(
         });
     }
   }
+  if (associationsChanged) await saveState(state);
   return found;
 }
 function reportRootProblem(root: string, error: unknown): void {

@@ -93,6 +93,19 @@ export function wrapText(value: string, width: number): string[] {
     return lines;
   });
 }
+function fitLine(value: string, width: number): string {
+  const text = cleanText(value).replace(/\s+/g, " ").trim();
+  if (stringWidth(text) <= width) return text;
+  let result = "";
+  let used = 0;
+  for (const { segment } of graphemes.segment(text)) {
+    const size = stringWidth(segment);
+    if (used + size > Math.max(0, width - 1)) break;
+    result += segment;
+    used += size;
+  }
+  return result + "…";
+}
 export function note(value: string, width: number): string {
   return wrapText(cleanText(value), Math.max(2, width - 2))
     .map((line) => "  " + line)
@@ -200,7 +213,16 @@ export async function withProgress<T>(
   let bar: ReturnType<typeof progress> | undefined;
   let completed = 0;
   let total = 0;
-  loading.start(cleanText(message));
+  const columns = process.stderr.columns ?? 80;
+  const size = Math.max(8, Math.min(24, Math.floor(columns / 4)));
+  const progressMessage = (count: number, message: string) => {
+    const prefix = `${String(count).padStart(String(total).length)}/${total} · `;
+    return (
+      prefix +
+      fitLine(message, Math.max(1, columns - size - stringWidth(prefix) - 4))
+    );
+  };
+  loading.start(fitLine(message, Math.max(1, columns - 3)));
   const report: ReportProgress = (update) => {
     if (!update.total) return;
     if (!bar) {
@@ -210,13 +232,13 @@ export async function withProgress<T>(
         ...options,
         style: "block",
         max: total,
-        size: Math.max(8, Math.min(24, (process.stderr.columns ?? 80) - 42)),
+        size,
       });
-      bar.start(`0/${total} · ${cleanText(update.message)}`);
+      bar.start(progressMessage(0, update.message));
     }
     bar.advance(
       update.completed - completed,
-      `${update.completed}/${total} · ${cleanText(update.message)}`,
+      progressMessage(update.completed, update.message),
     );
     completed = update.completed;
   };

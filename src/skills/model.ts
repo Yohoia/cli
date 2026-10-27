@@ -27,12 +27,19 @@ export const sourceSchema = z.object({
   metadata: metadataSchema.optional(),
   legacyGithub: z.literal(true).optional(),
 });
+const directoryIdentitySchema = z.object({
+  dev: z.string().regex(/^-?\d+$/),
+  ino: z.string().regex(/^-?\d+$/),
+  birthtimeNs: z.string().regex(/^-?\d+$/),
+});
+export type StoredDirectoryIdentity = z.infer<typeof directoryIdentitySchema>;
 export const recordSchema = z.object({
   repo: repoSchema,
   name: skillName,
   path: z.string().startsWith("/"),
   commit: metadataSchema.shape.commit.nullable(),
   version: metadataSchema.shape.version,
+  associationIdentity: directoryIdentitySchema.optional(),
 });
 export type InstallRecord = z.infer<typeof recordSchema>;
 export const stateSchema = z.object({

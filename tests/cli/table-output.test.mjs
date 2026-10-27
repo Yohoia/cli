@@ -72,6 +72,30 @@ function tableRows(output, width) {
   );
   const lines = output.split("\n");
   const rule = lines.findIndex((line) => /^  ─+(?:  ─+)+$/u.test(line));
+  if (rule < 0) {
+    const rows = [];
+    let headings = [];
+    let values = [];
+    for (const line of lines) {
+      assert.ok(stringWidth(line) <= width, line);
+      if (!line.trim()) {
+        if (values.length) rows.push(values);
+        values = [];
+        continue;
+      }
+      const field = /^  (\S(?:.*?\S)?) {2,}(.*)$/u.exec(line);
+      if (field) {
+        if (!rows.length) headings.push(field[1]);
+        else assert.equal(field[1], headings[values.length]);
+        values.push(field[2]);
+      } else if (values.length && /^ {4,}\S/u.test(line)) {
+        values[values.length - 1] += line.trim();
+      } else if (rows.length || values.length) break;
+    }
+    if (values.length) rows.push(values);
+    assert.ok(rows.length > 0, output);
+    return [headings, ...rows];
+  }
   assert.ok(rule > 0, output);
   const widths = lines[rule]
     .slice(2)

@@ -29,7 +29,7 @@ The package is marked private in `package.json` and is not published to npm. Fro
 pnpm install --frozen-lockfile
 pnpm check
 pnpm pack --pack-destination artifacts
-npm install --global ./artifacts/yoho-cli-0.6.6.tgz
+npm install --global ./artifacts/yoho-cli-0.6.7.tgz
 yoho --version
 yoho --help
 ```
@@ -37,7 +37,7 @@ yoho --help
 If the system-wide npm prefix is not writable, install into a user directory:
 
 ```bash
-npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.6.6.tgz
+npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.6.7.tgz
 ```
 
 Add `$HOME/.local/bin` to `PATH` if it is not already there.

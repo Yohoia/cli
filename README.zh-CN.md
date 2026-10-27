@@ -29,7 +29,7 @@ Yoho 为终端用户或本地产品提供一套确定性的命令接口，处理
 pnpm install --frozen-lockfile
 pnpm check
 pnpm pack --pack-destination artifacts
-npm install --global ./artifacts/yoho-cli-0.6.6.tgz
+npm install --global ./artifacts/yoho-cli-0.6.7.tgz
 yoho --version
 yoho --help
 ```
@@ -37,7 +37,7 @@ yoho --help
 如果系统级 npm 目录不可写，可以安装到用户目录：
 
 ```bash
-npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.6.6.tgz
+npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.6.7.tgz
 ```
 
 如果 `$HOME/.local/bin` 尚未加入 `PATH`，请先加入。

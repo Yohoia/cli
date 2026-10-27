@@ -105,6 +105,10 @@ test("unsafe archive paths are rejected before writing and complete installs exc
 });
 test("a real record write failure after replacement restores the manual target, while other targets remain updated", async (t) => {
   const f = await skillFixture(t);
+  const remoteManifest = `---\nname: speckit\ndescription: Test speckit\nversion: 1.0.0+${"build".repeat(80)}\n---\n# speckit\n`;
+  await f.repo("69aa892db28d0aba0f5ed47e/yoho-speckit", "speckit", {
+    "SKILL.md": remoteManifest,
+  });
   await f.command([
     "install",
     "speckit",
@@ -119,6 +123,7 @@ test("a real record write failure after replacement restores the manual target, 
     "---\nname: speckit\ndescription: Manual\n---\nOriginal manual content\n";
   await writeFile(join(manual, "SKILL.md"), original);
   await f.repo("69aa892db28d0aba0f5ed47e/yoho-speckit", "speckit", {
+    "SKILL.md": remoteManifest,
     "references/example.md": "Updated\n",
   });
   const source = f.repos.get("69aa892db28d0aba0f5ed47e/yoho-speckit");
@@ -127,6 +132,7 @@ test("a real record write failure after replacement restores the manual target, 
   version.archive = Buffer.from("bad");
   await f.command(["update", "speckit", "--target", "codex"], 3);
   version.archive = archive;
+  // Existing managed records already contain the declared version; committing the manual target adds it.
   const limit = (await stat(join(f.root, "config/skills.json"))).size + 20;
   const script =
     "import os,sys,resource,signal\nresource.setrlimit(resource.RLIMIT_FSIZE,(int(sys.argv[1]),int(sys.argv[1])))\nsignal.signal(signal.SIGXFSZ,signal.SIG_IGN)\nos.execv(sys.argv[2],sys.argv[2:])";

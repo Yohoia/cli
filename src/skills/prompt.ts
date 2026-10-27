@@ -5,6 +5,7 @@ import { cleanText, wrapText } from "../cli/presentation.js";
 export type Choice = {
   id: string;
   label: string;
+  detail?: string;
   description?: string;
   status?: string;
   disabled?: boolean | string;
@@ -45,9 +46,10 @@ export async function prompt(
   const width = process.stderr.columns ?? 100;
   const options = choices.map((choice) => ({
     value: choice.id,
-    label: cleanText(
-      `${choice.label}${choice.status ? ` [${choice.status}]` : ""}`,
-    ),
+    label: [
+      cleanText(`${choice.label}${choice.status ? ` [${choice.status}]` : ""}`),
+      ...(choice.detail ? [`  ${cleanText(choice.detail)}`] : []),
+    ].join("\n"),
     hint: wrapText(
       cleanText(disabledReason(choice) ?? choice.description ?? ""),
       Math.max(8, width - 10),
@@ -63,16 +65,19 @@ export async function prompt(
     output: process.stderr,
     signal,
     showInstructions: false,
+    withGuide: false,
     maxItems: Math.max(1, Math.min(8, (process.stderr.rows ?? 24) - 10)),
   };
   if (multiple)
     log.info(
       `可选 ${options.filter((option) => !option.disabled).length} 项 · a 全选/清空 · i 反选`,
-      { output: process.stderr },
+      { output: process.stderr, withGuide: false },
     );
   log.info(
-    multiple ? "↑↓ 移动 · 空格选择 · Enter 确认" : "↑↓ 移动 · Enter 确认",
-    { output: process.stderr },
+    multiple
+      ? "↑↓ 移动 · 空格选择 · Enter 确认 · Ctrl+C 取消"
+      : "↑↓ 移动 · Enter 确认 · Ctrl+C 取消",
+    { output: process.stderr, withGuide: false },
   );
   while (true) {
     const value = multiple

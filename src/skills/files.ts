@@ -10,11 +10,16 @@ import {
   readFile,
   rmdir,
 } from "node:fs/promises";
-import { join, resolve, dirname, basename } from "node:path";
+import { join, resolve, dirname, basename, relative } from "node:path";
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { systemErrorCode } from "../core/errors.js";
-import { targets, failure, type Selection } from "./model.js";
+import {
+  targets,
+  failure,
+  type Selection,
+  type StoredDirectoryIdentity,
+} from "./model.js";
 import type { SkillFiles } from "./archive.js";
 import { directoryLock } from "./lock.js";
 export async function exists(path: string): Promise<boolean> {
@@ -30,9 +35,34 @@ export async function directoryIdentity(path: string) {
   const { dev, ino, birthtimeNs } = await lstat(path, { bigint: true });
   return { dev, ino, birthtimeNs };
 }
+type DirectoryIdentity = Awaited<ReturnType<typeof directoryIdentity>>;
+export type DirectoryGuard = {
+  path: string;
+  identity: DirectoryIdentity;
+  parent?: DirectoryGuard;
+};
+export function storeIdentity(
+  identity: DirectoryIdentity,
+): StoredDirectoryIdentity {
+  return {
+    dev: String(identity.dev),
+    ino: String(identity.ino),
+    birthtimeNs: String(identity.birthtimeNs),
+  };
+}
+export function sameIdentity(
+  actual: DirectoryIdentity,
+  expected: DirectoryIdentity | StoredDirectoryIdentity,
+): boolean {
+  return (
+    String(actual.dev) === String(expected.dev) &&
+    String(actual.ino) === String(expected.ino) &&
+    String(actual.birthtimeNs) === String(expected.birthtimeNs)
+  );
+}
 export async function assertDirectoryIdentity(
   path: string,
-  identity: Awaited<ReturnType<typeof directoryIdentity>>,
+  identity: DirectoryIdentity | StoredDirectoryIdentity,
 ): Promise<void> {
   try {
     const info = await lstat(path, { bigint: true });
@@ -40,15 +70,77 @@ export async function assertDirectoryIdentity(
       (await realpath(dirname(path))) !== dirname(path) ||
       !info.isDirectory() ||
       info.isSymbolicLink() ||
-      info.dev !== identity.dev ||
-      info.ino !== identity.ino ||
-      info.birthtimeNs !== identity.birthtimeNs
+      !sameIdentity(info, identity)
     )
       throw new Error("Directory changed");
   } catch {
     throw failure(
       "SKILL_TARGET_CHANGED",
       `目标目录已变化，保留现有内容：${path}`,
+      5,
+    );
+  }
+}
+export async function guardDirectory(path: string): Promise<DirectoryGuard> {
+  let current = path;
+  for (;;) {
+    let identity: DirectoryIdentity;
+    try {
+      identity = await directoryIdentity(current);
+    } catch (error) {
+      if (systemErrorCode(error) !== "ENOENT" || dirname(current) === current)
+        throw error;
+      current = dirname(current);
+      continue;
+    }
+    await assertDirectoryIdentity(current, identity);
+    return { path: current, identity };
+  }
+}
+export async function assertGuard(guard: DirectoryGuard): Promise<void> {
+  if (guard.parent) await assertGuard(guard.parent);
+  await assertDirectoryIdentity(guard.path, guard.identity);
+}
+export async function ensureDirectory(
+  path: string,
+  anchor: DirectoryGuard,
+  signal: AbortSignal,
+): Promise<DirectoryGuard> {
+  const parts = relative(anchor.path, path).split("/").filter(Boolean);
+  if (parts.some((part) => part === ".." || part === "."))
+    throw failure("SKILL_TARGET_UNSAFE", "目标不在预检的父目录中", 5);
+  let current = anchor;
+  await assertGuard(current);
+  for (const part of parts) {
+    signal.throwIfAborted();
+    await assertGuard(current);
+    const next = join(current.path, part);
+    try {
+      await mkdir(next);
+    } catch (error) {
+      if (systemErrorCode(error) !== "EEXIST") throw error;
+    }
+    await assertGuard(current);
+    const child: DirectoryGuard = {
+      path: next,
+      identity: await directoryIdentity(next),
+      parent: current,
+    };
+    await assertGuard(child);
+    current = child;
+  }
+  return current;
+}
+export async function removeGuardedDirectory(
+  guard: DirectoryGuard,
+): Promise<void> {
+  try {
+    await assertGuard(guard);
+    await removeCreatedDirectory(guard.path, guard.identity);
+  } catch (error) {
+    throw failure(
+      "SKILL_ROLLBACK_FAILED",
+      `无法安全清理目录，请核对保留位置 ${guard.path}：${error instanceof Error ? error.message : String(error)}`,
       5,
     );
   }
@@ -76,10 +168,12 @@ export async function removeCreatedDirectory(
     if (systemErrorCode(error) === "ENOENT") return;
     throw error;
   }
+  await assertDirectoryIdentity(path, identity);
   const quarantine = await mkdtemp(join(dirname(path), ".yoho-rollback-"));
   const captured = join(quarantine, "target");
   try {
     await rename(path, captured);
+    await assertDirectoryIdentity(captured, identity);
     if (!(await matches(captured)))
       throw failure(
         "SKILL_TARGET_CHANGED",
@@ -157,25 +251,41 @@ export async function localFiles(path: string): Promise<SkillFiles> {
   return files;
 }
 export async function stageFiles(
-  base: string,
+  parent: DirectoryGuard,
   files: SkillFiles,
   signal: AbortSignal,
-): Promise<string> {
-  await mkdir(base, { recursive: true });
-  const stage = await mkdtemp(join(base, ".yoho-stage-"));
+): Promise<DirectoryGuard> {
+  await assertGuard(parent);
+  const path = await mkdtemp(join(parent.path, ".yoho-stage-"));
+  let stage: DirectoryGuard | undefined;
   try {
+    await assertGuard(parent);
+    stage = { path, identity: await directoryIdentity(path), parent };
+    await assertGuard(stage);
     for (const [path, file] of files) {
       signal.throwIfAborted();
-      const full = join(stage, path);
+      await assertGuard(stage);
+      const full = join(stage.path, path);
       await mkdir(dirname(full), { recursive: true });
+      await assertGuard(stage);
       await writeFile(full, file.bytes, {
         mode: file.executable ? 0o755 : 0o644,
         flag: "wx",
       });
     }
+    await assertGuard(stage);
     return stage;
   } catch (error) {
-    await rm(stage, { recursive: true, force: true });
+    try {
+      if (!stage) throw error;
+      await removeGuardedDirectory(stage);
+    } catch {
+      throw failure(
+        "SKILL_ROLLBACK_FAILED",
+        `暂存未完成，目录已变化或无法安全清理，请核对保留位置：${path}`,
+        5,
+      );
+    }
     throw error;
   }
 }

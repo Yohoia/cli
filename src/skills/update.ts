@@ -1,5 +1,8 @@
-import { installedVersion, type Existing } from "./inventory.js";
-import { dirname } from "node:path";
+import {
+  installedVersion,
+  reconcileAssociation,
+  type Existing,
+} from "./inventory.js";
 import { planUpdates, type UpdatePlan } from "./update-plan.js";
 import { AppError, normalizeError } from "../core/errors.js";
 import type { ReportProgress } from "../core/progress.js";
@@ -14,6 +17,10 @@ import {
   directoryIdentity,
   assertDirectoryIdentity,
   removeCreatedDirectory,
+  assertGuard,
+  removeGuardedDirectory,
+  storeIdentity,
+  type DirectoryGuard,
 } from "./files.js";
 import { Codeup, refresh } from "./codeup.js";
 import { fingerprint } from "./archive.js";
@@ -199,7 +206,7 @@ export async function updates(
         });
         continue;
       }
-      let stage: string | undefined;
+      let stage: DirectoryGuard | undefined;
       let release: (() => Promise<void>) | undefined;
       let backup: string | undefined;
       let replacementIdentity:
@@ -207,11 +214,6 @@ export async function updates(
       let latest: Prepared["metadata"] | undefined;
       const oldRecords = [...state.records];
       try {
-        if (!item.record) {
-          state.records.push(record);
-          await saveState(state);
-          oldRecords.push(record);
-        }
         if (source.legacyGithub)
           throw failure(
             "SOURCE_MIGRATION_REQUIRED",
@@ -238,43 +240,54 @@ export async function updates(
             `来源名称变化，未重命名安装：${item.path}`,
           );
         latest = content.metadata;
-        release = await reserve(item.path);
         if (item.kind !== "installed")
           throw failure("SKILL_TARGET_UNSAFE", item.problem, 5);
+        await assertGuard(item.parent);
         await assertDirectoryIdentity(item.path, item.identity);
+        release = await reserve(item.path);
+        await assertGuard(item.parent);
+        await assertDirectoryIdentity(item.path, item.identity);
+        if (!item.record) {
+          record.associationIdentity = storeIdentity(item.identity);
+          state.records.push(record);
+          await saveState(state);
+          await assertDirectoryIdentity(item.path, item.identity);
+        }
         const files = await localFiles(item.path);
         const unchanged =
           fingerprint(files) === fingerprint(content.files) &&
           record.commit === content.metadata.commit;
         if (!unchanged) {
-          stage = await stageFiles(
-            dirname(item.path),
-            content.files,
-            codeup.signal,
-          );
+          stage = await stageFiles(item.parent, content.files, codeup.signal);
           codeup.signal.throwIfAborted();
+          await assertGuard(item.parent);
           await assertDirectoryIdentity(item.path, item.identity);
           const originalBackup = backupPath(item.path);
           await rename(item.path, originalBackup);
           backup = originalBackup;
           await assertDirectoryIdentity(backup, item.identity);
-          const identity = await directoryIdentity(stage);
-          await rename(stage, item.path);
+          await assertGuard(stage);
+          const identity = stage.identity;
+          await rename(stage.path, item.path);
           stage = undefined;
           replacementIdentity = identity;
         }
         codeup.signal.throwIfAborted();
+        await assertGuard(item.parent);
         await assertDirectoryIdentity(
           item.path,
           replacementIdentity ?? item.identity,
         );
         state.records = state.records.filter((x) => x.path !== item.path);
         state.records.push({
-          ...record,
+          repo: record.repo,
+          name: record.name,
+          path: record.path,
           commit: content.metadata.commit,
           version: content.metadata.version,
         });
         await saveState(state);
+        await assertGuard(item.parent);
         await assertDirectoryIdentity(
           item.path,
           replacementIdentity ?? item.identity,
@@ -305,6 +318,7 @@ export async function updates(
           if (backup) {
             if (item.kind !== "installed")
               throw failure("SKILL_TARGET_UNSAFE", item.problem, 5);
+            await assertGuard(item.parent);
             await assertDirectoryIdentity(backup, item.identity);
             if (replacementIdentity)
               await removeCreatedDirectory(item.path, replacementIdentity);
@@ -320,6 +334,8 @@ export async function updates(
         } catch {
           restoreFailed = true;
         }
+        if (record.commit === null && item.kind === "installed")
+          await reconcileAssociation(state, record, item.identity);
         try {
           await saveState(state);
         } catch {
@@ -349,7 +365,14 @@ export async function updates(
         if (codeup.signal.aborted) break;
       } finally {
         if (stage)
-          await rm(stage, { recursive: true, force: true }).catch(() => {});
+          try {
+            await removeGuardedDirectory(stage);
+          } catch (error) {
+            firstFailure ??= normalizeError(error, codeup.signal);
+            const last = items.at(-1);
+            if (last)
+              last.message = `${last.message ?? "暂存清理失败"}；请核对保留的暂存目录：${stage.path}`;
+          }
         if (release) await release();
       }
     } finally {

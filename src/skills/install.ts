@@ -10,9 +10,11 @@ import {
   stageFiles,
   reserve,
   rename,
-  rm,
-  directoryIdentity,
-  removeCreatedDirectory,
+  guardDirectory,
+  ensureDirectory,
+  assertGuard,
+  removeGuardedDirectory,
+  type DirectoryGuard,
 } from "./files.js";
 import { unpack, type SkillFiles } from "./archive.js";
 import {
@@ -83,9 +85,16 @@ export async function installation(
       "请指定 Skill 与 --target；交互模式可直接运行 install",
       2,
     );
+  const destinations = await roots(selection);
+  const anchors = new Map(
+    await Promise.all(
+      destinations.map(
+        async (root) => [root, await guardDirectory(root)] as const,
+      ),
+    ),
+  );
   await refresh(state, codeup);
   const selected = [...new Set(names.map((name) => chooseSource(state, name)))];
-  const destinations = await roots(selection);
   const existing = await discover(state, selection);
   const items: TargetItem[] = [];
   const planned: { source: Source; path: string }[] = [];
@@ -128,10 +137,8 @@ export async function installation(
     }
   }
   const oldRecords = [...state.records];
-  const created: {
-    path: string;
-    identity: Awaited<ReturnType<typeof directoryIdentity>>;
-  }[] = [];
+  const created: DirectoryGuard[] = [];
+  const parents = new Map<string, DirectoryGuard>();
   const locks: (() => Promise<void>)[] = [];
   try {
     for (const { source, path } of planned) {
@@ -147,15 +154,34 @@ export async function installation(
         (x) => path === join(x, contents.metadata.name),
       );
       if (!root) throw failure("SKILL_TARGET_UNSAFE", "目标路径无效");
-      const stage = await stageFiles(root, contents.files, codeup.signal);
+      const anchor = anchors.get(root);
+      if (!anchor)
+        throw failure("SKILL_TARGET_UNSAFE", "缺少目标目录的预检身份", 5);
+      let parent = parents.get(root);
+      if (!parent) {
+        parent = await ensureDirectory(root, anchor, codeup.signal);
+        parents.set(root, parent);
+      }
+      await assertGuard(parent);
+      const stage = await stageFiles(parent, contents.files, codeup.signal);
+      let published = false;
       try {
+        await assertGuard(parent);
         locks.push(await reserve(path));
+        await assertGuard(parent);
         if (await exists(path))
           throw failure("SKILL_TARGET_CHANGED", `预检后目标已存在：${path}`);
         codeup.signal.throwIfAborted();
-        const identity = await directoryIdentity(stage);
-        await rename(stage, path);
-        created.push({ path, identity });
+        await assertGuard(stage);
+        await rename(stage.path, path);
+        published = true;
+        const installed: DirectoryGuard = {
+          path,
+          identity: stage.identity,
+          parent,
+        };
+        created.push(installed);
+        await assertGuard(installed);
         state.records = state.records.filter((x) => x.path !== path);
         state.records.push({
           repo: source.repo,
@@ -178,18 +204,20 @@ export async function installation(
           message: `已写入 ${contents.metadata.name}`,
         });
       } finally {
-        await rm(stage, { recursive: true, force: true });
+        if (!published) await removeGuardedDirectory(stage);
       }
     }
+    for (const installed of created) await assertGuard(installed);
     await saveState(state);
+    for (const installed of created) await assertGuard(installed);
   } catch (error) {
     const remnants: string[] = [];
-    for (const { path, identity } of created.reverse())
+    for (const installed of created.reverse())
       try {
-        await removeCreatedDirectory(path, identity);
+        await removeGuardedDirectory(installed);
       } catch (cleanupError) {
         remnants.push(
-          cleanupError instanceof Error ? cleanupError.message : path,
+          cleanupError instanceof Error ? cleanupError.message : installed.path,
         );
       }
     state.records = oldRecords;
