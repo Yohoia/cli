@@ -30,6 +30,29 @@ export async function directoryIdentity(path: string) {
   const { dev, ino, birthtimeNs } = await lstat(path, { bigint: true });
   return { dev, ino, birthtimeNs };
 }
+export async function assertDirectoryIdentity(
+  path: string,
+  identity: Awaited<ReturnType<typeof directoryIdentity>>,
+): Promise<void> {
+  try {
+    const info = await lstat(path, { bigint: true });
+    if (
+      (await realpath(dirname(path))) !== dirname(path) ||
+      !info.isDirectory() ||
+      info.isSymbolicLink() ||
+      info.dev !== identity.dev ||
+      info.ino !== identity.ino ||
+      info.birthtimeNs !== identity.birthtimeNs
+    )
+      throw new Error("Directory changed");
+  } catch {
+    throw failure(
+      "SKILL_TARGET_CHANGED",
+      `目标目录已变化，保留现有内容：${path}`,
+      5,
+    );
+  }
+}
 export async function removeCreatedDirectory(
   path: string,
   identity: Awaited<ReturnType<typeof directoryIdentity>>,
@@ -74,28 +97,30 @@ export async function removeCreatedDirectory(
     await rmdir(quarantine).catch(() => {});
   }
 }
-async function canonical(path: string): Promise<string> {
+export async function canonicalPath(path: string): Promise<string> {
   try {
     return await realpath(path);
   } catch (error) {
     if (systemErrorCode(error) !== "ENOENT") throw error;
     const parent = dirname(path);
     if (parent === path) throw error;
-    return join(await canonical(parent), basename(path));
+    return join(await canonicalPath(parent), basename(path));
   }
 }
-export async function roots(selection: Selection): Promise<string[]> {
-  const base =
+export async function rootPaths(selection: Selection): Promise<string[]> {
+  const base = await canonicalPath(
     selection.scope === "user"
       ? homedir()
-      : resolve(selection.projectPath ?? process.cwd());
+      : resolve(selection.projectPath ?? process.cwd()),
+  );
+  return selection.target.map((target) =>
+    join(base, targets[target], "skills"),
+  );
+}
+export async function roots(selection: Selection): Promise<string[]> {
   return [
     ...new Set(
-      await Promise.all(
-        selection.target.map((target) =>
-          canonical(join(base, targets[target], "skills")),
-        ),
-      ),
+      await Promise.all((await rootPaths(selection)).map(canonicalPath)),
     ),
   ];
 }

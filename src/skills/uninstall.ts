@@ -2,7 +2,7 @@ import { dirname } from "node:path";
 import { realpath } from "node:fs/promises";
 import { AppError, normalizeError, systemErrorCode } from "../core/errors.js";
 import type { ReportProgress } from "../core/progress.js";
-import { discoverUpdates, sourcesForInstallation } from "./inventory.js";
+import { discoverInstallations, sourcesForInstallation } from "./inventory.js";
 import {
   backupPath,
   directoryIdentity,
@@ -60,7 +60,7 @@ export async function planUninstall(
           names.map((name) => {
             const matches = sources.filter(
               (source) =>
-                source.repo === name.toLowerCase() ||
+                source.repo === name ||
                 source.name === name ||
                 state.records.some(
                   (record) =>
@@ -70,7 +70,7 @@ export async function planUninstall(
             if (matches.length !== 1 || !matches[0])
               throw failure(
                 "SKILL_SOURCE_AMBIGUOUS",
-                `Skill 不存在或来源不唯一：${name}；请指定 owner/repo`,
+                `Skill 不存在或来源不唯一：${name}；请指定 Codeup 命名空间/仓库路径`,
               );
             return matches[0];
           }),
@@ -78,9 +78,10 @@ export async function planUninstall(
       ];
   const repos = new Set(selected.map((source) => source.repo));
   const records = state.records.filter((record) => repos.has(record.repo));
-  const installed = await discoverUpdates(
-    { ...state, records },
+  const installed = await discoverInstallations(
+    state,
     { kind: "automatic", all: false },
+    records,
   );
   const targets: Target[] = [];
   for (const item of installed) {

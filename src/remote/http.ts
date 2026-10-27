@@ -78,14 +78,32 @@ export class RemoteClient {
           },
           ...(options.body === undefined ? {} : { body: options.body }),
         });
-        const body: unknown =
-          response.status === 204 ? null : await response.json();
+        let body: unknown;
+        try {
+          body = response.status === 204 ? null : await response.json();
+        } catch (error) {
+          if (response.ok) {
+            if (!(error instanceof SyntaxError)) throw error;
+            throw new AppError({
+              code: "REMOTE_PROTOCOL_ERROR",
+              message:
+                "服务端返回的响应不是有效 JSON，请核对 CLI 与 PageHush 的配套版本",
+              exitCode: 5,
+            });
+          }
+        }
         if (!response.ok) {
           if (response.status >= 500 && attempt + 1 < attempts) continue;
           const parsed = errorSchema.safeParse(body);
+          const fallback =
+            response.status === 401
+              ? "UNAUTHORIZED"
+              : response.status === 403
+                ? "FORBIDDEN"
+                : "remote_error";
           const raw = parsed.success
-            ? (parsed.data.code ?? parsed.data.error ?? "remote_error")
-            : "remote_error";
+            ? (parsed.data.code ?? parsed.data.error ?? fallback)
+            : fallback;
           const code = raw.toUpperCase();
           const exitCode =
             response.status === 401 || response.status === 403

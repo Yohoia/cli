@@ -1,10 +1,6 @@
-import {
-  discoverUpdates,
-  sourcesForInstallation,
-  installedVersion,
-  type Existing,
-} from "./inventory.js";
+import { installedVersion, type Existing } from "./inventory.js";
 import { dirname } from "node:path";
+import { planUpdates, type UpdatePlan } from "./update-plan.js";
 import { AppError, normalizeError } from "../core/errors.js";
 import type { ReportProgress } from "../core/progress.js";
 import {
@@ -15,8 +11,11 @@ import {
   backupPath,
   rename,
   rm,
+  directoryIdentity,
+  assertDirectoryIdentity,
+  removeCreatedDirectory,
 } from "./files.js";
-import { GitHub, refresh } from "./github.js";
+import { Codeup, refresh } from "./codeup.js";
 import { fingerprint } from "./archive.js";
 import { prepare, type Prepared } from "./install.js";
 import { saveState } from "./state.js";
@@ -37,17 +36,17 @@ export type AvailableUpdate = {
 };
 export async function checkUpdates(
   state: SkillState,
-  github: GitHub,
+  codeup: Codeup,
   scope: UpdateScope,
 ) {
-  await refresh(state, github);
+  await refresh(state, codeup);
   const ready: AvailableUpdate[] = [];
   const current: TargetItem[] = [];
   const blocked: TargetItem[] = [];
   const prepared = new Map<string, Prepared>();
   let failureError: AppError | undefined;
-  for (const item of await discoverUpdates(state, scope)) {
-    const sources = sourcesForInstallation(state, item);
+  const plan = await planUpdates(state, [], scope);
+  for (const { item, sources } of plan.targets) {
     const source = sources.length === 1 ? sources[0] : undefined;
     if (item.problem || !source) {
       const message =
@@ -55,23 +54,35 @@ export async function checkUpdates(
         (item.record
           ? `来源已移除：${item.record.repo}；恢复：yoho skill source add ${item.record.repo}`
           : `同名来源不唯一：${sources.map((source) => source.repo).join("、")}`);
-      if (item.kind === "recovery")
-        failureError ??= failure("SKILL_RECOVERY_REQUIRED", message, 5);
+      if (item.kind !== "installed")
+        failureError ??= failure(
+          item.kind === "recovery"
+            ? "SKILL_RECOVERY_REQUIRED"
+            : "SKILL_TARGET_UNSAFE",
+          message,
+          5,
+        );
       blocked.push({
         repo: item.record?.repo ?? "",
         name: item.name,
         path: item.path,
-        status: item.kind === "recovery" ? "failed" : "skipped",
+        status: item.kind !== "installed" ? "failed" : "skipped",
         message,
       });
       continue;
     }
     let latest: Prepared["metadata"] | undefined;
     try {
-      latest = await github.metadata(source.repo);
+      if (source.legacyGithub)
+        throw failure(
+          "SOURCE_MIGRATION_REQUIRED",
+          "旧 GitHub 来源需要先登记对应 Codeup 来源",
+          2,
+        );
+      latest = await codeup.metadata(source.repo);
       let content = prepared.get(source.repo);
       if (!content) {
-        content = await prepare(source, github);
+        content = await prepare(source, codeup);
         prepared.set(source.repo, content);
       }
       if (content.metadata.name !== item.name)
@@ -94,10 +105,10 @@ export async function checkUpdates(
           item,
           source,
           content,
-          version: await installedVersion(state, item.path),
+          version: await installedVersion(item.path),
         });
     } catch (error) {
-      const problem = normalizeError(error, github.signal);
+      const problem = normalizeError(error, codeup.signal);
       failureError ??= problem;
       blocked.push({
         repo: source.repo,
@@ -107,54 +118,25 @@ export async function checkUpdates(
         ...(latest ? { commit: latest.commit, version: latest.version } : {}),
         message: `来源暂不可用或更新检查失败：${problem.message}`,
       });
-      if (github.signal.aborted) break;
+      if (codeup.signal.aborted) break;
     }
   }
-  return { ready, current, blocked, failureError };
+  return { ready, current, blocked, failureError, plan };
 }
 export async function updates(
   state: SkillState,
-  github: GitHub,
-  names: string[],
-  scope: UpdateScope,
+  codeup: Codeup,
+  plan: UpdatePlan,
   report: ReportProgress = () => {},
 ): Promise<SkillResult> {
-  const all = scope.kind === "automatic" ? scope.all : scope.selection.all;
-  if (
-    (scope.kind === "selected" && !scope.selection.target.length) ||
-    (!all && !names.length)
-  )
-    throw failure(
-      "INVALID_ARGUMENT",
-      "请指定要更新的 Skill 或显式 --all，并提供 --target",
-      2,
-    );
-  if (all && names.length)
-    throw failure("INVALID_ARGUMENT", "--all 不能与 Skill 名称同时提供", 2);
-  await refresh(state, github);
-  const existing = await discoverUpdates(state, scope);
-  function matches(item: Existing, name: string) {
-    if (item.name === name || item.path === name || item.record?.repo === name)
-      return true;
-    if (item.record) return false;
-    const sources = sourcesForInstallation(state, item);
-    return sources.length === 1 && sources[0]?.repo === name;
-  }
-  const chosen = existing.filter(
-    (x) => all || names.some((name) => matches(x, name)),
-  );
-  if (!all && names.some((name) => !chosen.some((item) => matches(item, name))))
-    throw failure(
-      "SKILL_NOT_INSTALLED",
-      "指定的 Skill 未纳入 CLI 管理，或不存在于所选范围与目标中；请先登记对应来源",
-    );
+  const chosen = plan.targets;
   const items: TargetItem[] = [];
   let firstFailure: AppError | undefined;
   const prepared = new Map<string, Prepared>();
   const unavailable = new Map<string, AppError>();
-  for (const item of chosen) {
-    if (github.signal.aborted) {
-      firstFailure ??= normalizeError(new Error("操作已取消"), github.signal);
+  for (const { item, sources } of chosen) {
+    if (codeup.signal.aborted) {
+      firstFailure ??= normalizeError(new Error("操作已取消"), codeup.signal);
       break;
     }
     report({
@@ -165,25 +147,30 @@ export async function updates(
     try {
       let record = item.record;
       if (item.problem) {
-        if (item.kind === "recovery")
-          firstFailure ??= failure("SKILL_RECOVERY_REQUIRED", item.problem, 5);
+        firstFailure ??= failure(
+          item.kind === "recovery"
+            ? "SKILL_RECOVERY_REQUIRED"
+            : "SKILL_TARGET_UNSAFE",
+          item.problem,
+          5,
+        );
         items.push({
           repo: record?.repo ?? "",
           name: item.name,
           path: item.path,
-          status: item.kind === "recovery" ? "failed" : "skipped",
+          status: "failed",
           message: item.problem,
         });
         continue;
       }
       if (!record) {
-        const candidates = sourcesForInstallation(state, item);
+        const candidates = sources;
         const match = candidates[0];
         if (candidates.length !== 1 || !match) {
           const hint =
             candidates.length > 1
               ? `同名来源不唯一：${candidates.map((x) => x.repo).join("、")}。请确认来源后重试。`
-              : `未找到匹配来源（Skill：${item.name}）。请先运行 yoho skill source add <owner/repo>，再重试。`;
+              : `未找到匹配来源（Skill：${item.name}）。请先运行 yoho skill source add <namespace/repo>，再重试。`;
           items.push({
             repo: "",
             name: item.name,
@@ -215,7 +202,8 @@ export async function updates(
       let stage: string | undefined;
       let release: (() => Promise<void>) | undefined;
       let backup: string | undefined;
-      let replaced = false;
+      let replacementIdentity:
+        Awaited<ReturnType<typeof directoryIdentity>> | undefined;
       let latest: Prepared["metadata"] | undefined;
       const oldRecords = [...state.records];
       try {
@@ -224,16 +212,22 @@ export async function updates(
           await saveState(state);
           oldRecords.push(record);
         }
-        latest = await github.metadata(source.repo);
+        if (source.legacyGithub)
+          throw failure(
+            "SOURCE_MIGRATION_REQUIRED",
+            "旧 GitHub 来源需要先登记对应 Codeup 来源",
+            2,
+          );
+        latest = await codeup.metadata(source.repo);
         const previousError = unavailable.get(source.repo);
         if (previousError) throw previousError;
         let content = prepared.get(source.repo);
         if (!content) {
           try {
-            content = await prepare(source, github);
+            content = await prepare(source, codeup);
             prepared.set(source.repo, content);
           } catch (error) {
-            const problem = normalizeError(error, github.signal);
+            const problem = normalizeError(error, codeup.signal);
             unavailable.set(source.repo, problem);
             throw problem;
           }
@@ -245,6 +239,9 @@ export async function updates(
           );
         latest = content.metadata;
         release = await reserve(item.path);
+        if (item.kind !== "installed")
+          throw failure("SKILL_TARGET_UNSAFE", item.problem, 5);
+        await assertDirectoryIdentity(item.path, item.identity);
         const files = await localFiles(item.path);
         const unchanged =
           fingerprint(files) === fingerprint(content.files) &&
@@ -253,22 +250,24 @@ export async function updates(
           stage = await stageFiles(
             dirname(item.path),
             content.files,
-            github.signal,
+            codeup.signal,
           );
-          github.signal.throwIfAborted();
-          backup = backupPath(item.path);
-          await rename(item.path, backup);
-          try {
-            await rename(stage, item.path);
-            stage = undefined;
-            replaced = true;
-          } catch (error) {
-            await rename(backup, item.path);
-            backup = undefined;
-            throw error;
-          }
+          codeup.signal.throwIfAborted();
+          await assertDirectoryIdentity(item.path, item.identity);
+          const originalBackup = backupPath(item.path);
+          await rename(item.path, originalBackup);
+          backup = originalBackup;
+          await assertDirectoryIdentity(backup, item.identity);
+          const identity = await directoryIdentity(stage);
+          await rename(stage, item.path);
+          stage = undefined;
+          replacementIdentity = identity;
         }
-        github.signal.throwIfAborted();
+        codeup.signal.throwIfAborted();
+        await assertDirectoryIdentity(
+          item.path,
+          replacementIdentity ?? item.identity,
+        );
         state.records = state.records.filter((x) => x.path !== item.path);
         state.records.push({
           ...record,
@@ -276,9 +275,14 @@ export async function updates(
           version: content.metadata.version,
         });
         await saveState(state);
+        await assertDirectoryIdentity(
+          item.path,
+          replacementIdentity ?? item.identity,
+        );
         let message: string | undefined;
         if (backup) {
           try {
+            await assertDirectoryIdentity(backup, item.identity);
             await rm(backup, { recursive: true });
           } catch {
             message = `更新成功，但备份清理失败：${backup}`;
@@ -294,17 +298,34 @@ export async function updates(
           ...(message ? { message } : {}),
         });
       } catch (error) {
-        let problem = normalizeError(error, github.signal);
+        let problem = normalizeError(error, codeup.signal);
         state.records = oldRecords;
+        let restoreFailed = false;
         try {
           if (backup) {
-            if (replaced && (await exists(item.path)))
-              await rm(item.path, { recursive: true });
+            if (item.kind !== "installed")
+              throw failure("SKILL_TARGET_UNSAFE", item.problem, 5);
+            await assertDirectoryIdentity(backup, item.identity);
+            if (replacementIdentity)
+              await removeCreatedDirectory(item.path, replacementIdentity);
+            if (await exists(item.path))
+              throw failure(
+                "SKILL_TARGET_CHANGED",
+                `恢复位置已被占用，保留备份：${backup}`,
+                5,
+              );
             await rename(backup, item.path);
             backup = undefined;
           }
+        } catch {
+          restoreFailed = true;
+        }
+        try {
           await saveState(state);
         } catch {
+          restoreFailed = true;
+        }
+        if (restoreFailed) {
           problem = failure(
             "SKILL_RESTORE_FAILED",
             `恢复失败，请检查目标 ${item.path} 与备份 ${backup ?? "安装记录"}`,
@@ -325,7 +346,7 @@ export async function updates(
               }
             : {}),
         });
-        if (github.signal.aborted) break;
+        if (codeup.signal.aborted) break;
       } finally {
         if (stage)
           await rm(stage, { recursive: true, force: true }).catch(() => {});

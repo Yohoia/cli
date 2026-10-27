@@ -1,26 +1,55 @@
 import { mkdir, readFile, writeFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { configDirectory } from "../remote/config.js";
+import { z } from "zod";
+import { configDirectory } from "../core/paths.js";
 import { systemErrorCode } from "../core/errors.js";
-import { stateSchema, failure, type SkillState } from "./model.js";
+import {
+  stateSchema,
+  sourceSchema,
+  recordSchema,
+  failure,
+  codeupNamespace,
+  initialSkills,
+  migratedRepository,
+  type SkillState,
+} from "./model.js";
 import { directoryLock } from "./lock.js";
 export async function readState(): Promise<SkillState> {
   try {
-    return stateSchema.parse(
-      JSON.parse(
-        await readFile(join(configDirectory(), "skills.json"), "utf8"),
-      ),
+    const data: unknown = JSON.parse(
+      await readFile(join(configDirectory(), "skills.json"), "utf8"),
     );
+    if (z.object({ version: z.literal(1) }).safeParse(data).success) {
+      const old = stateSchema.extend({ version: z.literal(1) }).parse(data);
+      const sources = new Map<string, z.infer<typeof sourceSchema>>();
+      for (const source of old.sources) {
+        const repo = migratedRepository(source.repo);
+        sources.set(repo, {
+          ...source,
+          repo,
+          ...(repo === source.repo && !repo.startsWith(`${codeupNamespace}/`)
+            ? { legacyGithub: true as const }
+            : {}),
+        });
+      }
+      return {
+        version: 2,
+        sources: [...sources.values()],
+        records: old.records.map((record): z.infer<typeof recordSchema> => ({
+          ...record,
+          repo: migratedRepository(record.repo),
+        })),
+      };
+    }
+    return stateSchema.parse(data);
   } catch (error) {
     if (systemErrorCode(error) === "ENOENT")
       return {
-        version: 1,
-        sources: [
-          "yoho-standard-readme",
-          "yoho-retro-poster",
-          "yoho-speckit",
-        ].map((x) => ({ repo: `yohoia/${x}` })),
+        version: 2,
+        sources: initialSkills.map((x) => ({
+          repo: `${codeupNamespace}/${x}`,
+        })),
         records: [],
       };
     throw failure(
@@ -53,6 +82,7 @@ export async function withSkillState<T>(
   const release = await directoryLock(lock);
   try {
     const state = await readState();
+    await saveState(state);
     return await action(state);
   } finally {
     await release();

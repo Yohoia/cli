@@ -1,6 +1,6 @@
 # Yoho CLI
 
-A local TypeScript CLI for managing PageHush remote articles and GitHub Agent Skills.
+A local TypeScript CLI for managing PageHush remote articles and Codeup Agent Skills.
 
 [简体中文](README.zh-CN.md)
 
@@ -9,7 +9,7 @@ A local TypeScript CLI for managing PageHush remote articles and GitHub Agent Sk
 Yoho gives a terminal or local product one deterministic interface for two jobs:
 
 - `yoho blog` reads and writes articles through the PageHush API.
-- `yoho skill` discovers GitHub Skill sources and installs or updates complete Skill directories.
+- `yoho skill` discovers Codeup Skill sources and installs or updates complete Skill directories.
 
 Use `--json` when another program needs a stable result. PageHush is the authoritative article store: this CLI does not scan local blog folders, edit local article files, or provide bidirectional synchronization.
 
@@ -18,6 +18,7 @@ Use `--json` when another program needs a stable result. PageHush is the authori
 ### Requirements
 
 - Node.js 24 or newer.
+- Git and OpenSSH with a Codeup-authorized SSH key for Skill commands.
 - pnpm 11.25.0 when building this repository.
 - A compatible PageHush API for `yoho blog` and `yoho auth` commands.
 - macOS is the current installation-validation target. Linux and Windows installation are not covered by the current acceptance record.
@@ -28,7 +29,7 @@ The package is marked private in `package.json` and is not published to npm. Fro
 pnpm install --frozen-lockfile
 pnpm check
 pnpm pack --pack-destination artifacts
-npm install --global ./artifacts/yoho-cli-0.6.3.tgz
+npm install --global ./artifacts/yoho-cli-0.6.6.tgz
 yoho --version
 yoho --help
 ```
@@ -36,14 +37,14 @@ yoho --help
 If the system-wide npm prefix is not writable, install into a user directory:
 
 ```bash
-npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.6.3.tgz
+npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.6.6.tgz
 ```
 
 Add `$HOME/.local/bin` to `PATH` if it is not already there.
 
 ### First successful run
 
-Skill management does not require PageHush login. List the registered GitHub sources and the Skills they expose:
+Skill management does not require PageHush login. List the registered Codeup sources and the Skills they expose:
 
 ```bash
 yoho skill list
@@ -75,7 +76,7 @@ The build bundles dependencies into ESM with `dist/cli.js` as its entry and addi
 | Command group | Source of truth                                              | Main result                                                          |
 | ------------- | ------------------------------------------------------------ | -------------------------------------------------------------------- |
 | `yoho blog`   | PageHush remote article API                                  | Articles, revisions, publish/delete operations, and recovery records |
-| `yoho skill`  | Registered GitHub repositories plus local target directories | Skill catalog, installation state, and per-target update results     |
+| `yoho skill`  | Registered Codeup repositories plus local target directories | Skill catalog, installation state, and per-target update results     |
 | `yoho auth`   | PageHush device authorization                                | A service-scoped token stored in the system credential store         |
 | `yoho --json` | The same command execution                                   | Machine-readable success or failure on stdout                        |
 
@@ -163,23 +164,23 @@ yoho blog delete 'ARTICLE_UUID' --yes --if-match 'REVISION_FROM_PREVIEW' --json
 
 ## Install, update, and remove Skills
 
-Skill commands use the current user's registered GitHub sources and do not require PageHush authorization. A new configuration starts with these sources:
+Skill commands use the current user's registered Codeup sources and do not require PageHush authorization. A new configuration starts with these sources:
 
-- `Yohoia/yoho-standard-readme`
-- `Yohoia/yoho-retro-poster`
-- `Yohoia/yoho-speckit` (the Skill name is `speckit`)
+- `69aa892db28d0aba0f5ed47e/yoho-standard-readme`
+- `69aa892db28d0aba0f5ed47e/yoho-retro-poster`
+- `69aa892db28d0aba0f5ed47e/yoho-speckit` (the Skill name is `speckit`)
 
 Manage sources with:
 
 ```bash
 yoho skill source list
-yoho skill source add owner/repo
-yoho skill source add https://github.com/owner/repo
+yoho skill source add namespace/repo
+yoho skill source add https://codeup.aliyun.com/namespace/repo
 yoho skill source refresh
-yoho skill source remove owner/repo
+yoho skill source remove namespace/repo
 ```
 
-Sources are saved for the current user and shared across projects. An unavailable source keeps its last catalog entry and reports the reason, but installation and updates require the current commit. Public repositories can be downloaded without GitHub login; private repositories reuse the local `gh auth login` session. The CLI does not store a GitHub token. Removing a source pauses updates without uninstalling its Skills; adding it again resumes management.
+Sources are saved for the current user and shared across projects. An unavailable source keeps its last catalog entry and reports the reason, but installation and updates require the current commit. Reads use Git + SSH and never contact GitHub or call `gh`. Install Git and OpenSSH and register an authorized SSH public key in Codeup. The CLI automatically uses `~/.ssh/github_codeup_sync_ed25519` when present, otherwise your SSH configuration/agent; set `YOHO_SKILL_SSH_KEY` to use another private key. Standard `GIT_SSH_COMMAND` configuration is also supported. Private key contents are not stored in CLI state or caches. Existing registrations and installation records for the three original Yohoia sources migrate automatically to their Codeup mirrors; unrecognized old GitHub sources remain unavailable until explicitly replaced. Removing a source pauses updates without uninstalling its Skills; adding it again resumes management.
 
 ### Installation targets
 
@@ -231,7 +232,7 @@ yoho skill update --all --scope user --target agents --target codex --json
 
 Explicit `--scope`, `--target`, or `--project-path` options narrow an update to those locations. Without these options, updates use existing installation paths. They do not scan other projects for unrecorded installations or fill missing targets. Version labels are for display; updates still use the latest default-branch commit rather than sorting versions or selecting historical releases.
 
-Installation protects existing target directories and fills only missing targets. Each operation downloads the latest default-branch commit once per source, copies the complete Skill tree without Git metadata, and never runs Skill scripts or installs npm/pip dependencies. Updates treat the repository as authoritative: local edits are overwritten, deleted repository files are restored, and local files absent from the repository are removed. Update failures recover the affected target and continue with other targets; initial batch-install failures roll back the new batch while preserving existing installations.
+Installation protects existing target directories and fills only missing targets. Each operation fixes the latest Codeup default-branch commit once per source, caches Git objects and fetches files on demand, copies the complete Skill tree without Git metadata, and never runs Skill scripts or installs npm/pip dependencies. Updates treat the repository as authoritative: local edits are overwritten, deleted repository files are restored, and local files absent from the repository are removed. Update failures recover the affected target and continue with other targets; initial batch-install failures roll back the new batch while preserving existing installations.
 
 ### Uninstall a Skill while keeping its source
 
@@ -245,7 +246,7 @@ yoho skill uninstall speckit
 # Preview directories and installation records without deleting them
 yoho skill uninstall speckit --dry-run
 
-# Explicit confirmation for scripts; accepts names or owner/repo
+# Explicit confirmation for scripts; accepts names or namespace/repo
 yoho skill uninstall speckit yoho-retro-poster --yes
 
 # Remove all managed installations while keeping the catalog
@@ -254,7 +255,7 @@ yoho skill uninstall --all --yes
 
 Run `yoho skill uninstall` without names to choose from installed, managed Skills. Use arrows to move, Space to select one or several, and Enter to continue. Use `a` to select or clear all, `i` to invert, and Ctrl+C to cancel. The picker groups installation locations by Skill and shows their count; confirmation lists the actual directories. Uninstalled and unrelated third-party Skills are excluded. If nothing is installed, the command reports that and exits.
 
-`yoho skill remove` aliases `uninstall`. Uninstall deletes only local files and installation records. It always keeps source registrations: `yoho skill list` still shows the Skill as `not installed`, and you can reinstall it directly. Only `yoho skill source remove owner/repo` removes a source registration; that command keeps installed files.
+`yoho skill remove` aliases `uninstall`. Uninstall deletes only local files and installation records. It always keeps source registrations: `yoho skill list` still shows the Skill as `not installed`, and you can reinstall it directly. Only `yoho skill source remove namespace/repo` removes a source registration; that command keeps installed files.
 
 Uninstall works offline. It includes managed installations in the current project and user directories, plus recorded locations in other projects, without asking for an installation scope. Unrelated third-party Skills are excluded. Manual copies require a unique match between SKILL.md and a locally cached source name. The CLI does not scan unrecorded projects.
 
@@ -301,17 +302,30 @@ The CLI does not provide editing of an existing article body, title, or metadata
 pnpm install --frozen-lockfile
 pnpm check
 pnpm format:check
-pnpm test:file tests/remote-migration.test.mjs
+pnpm test:prepare
 pnpm test
 ```
 
-The test suite builds and exercises the installed CLI in child processes. Remote protocol tests use isolated local HTTP fixtures, configuration, credentials, and storage; they do not write to the production article store. The remote tests normally use the adjacent `../PageHush` source tree. Set `PAGEHUSH_SOURCE` when it lives elsewhere:
+The suite builds and exercises the installed CLI in child processes. Remote tests use isolated databases, credentials, and storage. `tests/helpers/pagehush-backend.json` pins the backend Git revision, lockfile digest, fixture entry, and required build outputs.
+
+Prepare the backend before the first full run:
 
 ```bash
-PAGEHUSH_SOURCE=/path/to/PageHush pnpm test
+pnpm test:prepare
+pnpm test
 ```
 
-Skill tests use isolated GitHub protocol fixtures, a fake `gh` boundary, temporary directories, Python 3, and the system `tar` command. They do not read real GitHub credentials or modify real Skill directories.
+An existing local repository can supply the pinned Git objects. Preparation creates a separate checkout in `.cache/test-backends/`, without using or modifying uncommitted files:
+
+```bash
+pnpm test:prepare --source /path/to/PageHush
+# Use offline mode when the npm cache is complete
+pnpm test:prepare --source /path/to/PageHush --offline
+```
+
+Preparation installs locked dependencies with `npm ci` and builds the shared package. It can be rerun. Test startup checks the revision, clean worktree, lockfile, and required artifacts. `PAGEHUSH_SOURCE` can point to another prepared checkout, but it must match the pinned revision and pass those checks.
+
+Skill tests use real local Git repositories, an isolated SSH transport boundary, controlled source faults, temporary directories, Python 3, and the system `tar` command. They do not read real SSH credentials or modify real Skill directories.
 
 ## License
 

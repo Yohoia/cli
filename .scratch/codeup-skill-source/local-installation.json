@@ -1,0 +1,60 @@
+{
+  "binary": "/Users/yohoia/.local/bin/yoho",
+  "package": "/Users/yohoia/Desktop/Yohoia/yoho-cli/artifacts/yoho-cli-0.6.5.tgz",
+  "checks": [
+    {
+      "command": "yoho --version",
+      "version": "0.6.5"
+    },
+    {
+      "command": "yoho skill source list --json",
+      "seconds": 0.08,
+      "total": 3,
+      "items": [
+        {
+          "repo": "69aa892db28d0aba0f5ed47e/yoho-standard-readme",
+          "name": null,
+          "status": "registered",
+          "version": null
+        },
+        {
+          "repo": "69aa892db28d0aba0f5ed47e/yoho-retro-poster",
+          "name": null,
+          "status": "registered",
+          "version": null
+        },
+        {
+          "repo": "69aa892db28d0aba0f5ed47e/yoho-speckit",
+          "name": null,
+          "status": "registered",
+          "version": null
+        }
+      ]
+    },
+    {
+      "command": "yoho skill list --json",
+      "seconds": 1.8,
+      "total": 3,
+      "items": [
+        {
+          "repo": "69aa892db28d0aba0f5ed47e/yoho-standard-readme",
+          "name": "yoho-standard-readme",
+          "status": "available",
+          "version": "1.0.0"
+        },
+        {
+          "repo": "69aa892db28d0aba0f5ed47e/yoho-retro-poster",
+          "name": "yoho-retro-poster",
+          "status": "available",
+          "version": "0.6.0"
+        },
+        {
+          "repo": "69aa892db28d0aba0f5ed47e/yoho-speckit",
+          "name": "speckit",
+          "status": "available",
+          "version": "0.3.6"
+        }
+      ]
+    }
+  ]
+}

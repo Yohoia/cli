@@ -1,7 +1,8 @@
+import { parseSkill } from "./manifest.js";
 import { join, dirname } from "node:path";
 import type { ReportProgress } from "../core/progress.js";
 import { discover } from "./inventory.js";
-import { GitHub, parseSkill, refresh } from "./github.js";
+import { Codeup, refresh } from "./codeup.js";
 import { saveState } from "./state.js";
 import {
   roots,
@@ -26,26 +27,38 @@ import {
 export type Prepared = { repo: string; metadata: Metadata; files: SkillFiles };
 export function chooseSource(state: SkillState, name: string): Source {
   const matches = state.sources.filter(
-    (x) => x.repo === name.toLowerCase() || x.metadata?.name === name,
+    (x) => x.repo === name || x.metadata?.name === name,
   );
   if (matches.length !== 1 || !matches[0])
     throw failure(
       "SKILL_SOURCE_AMBIGUOUS",
-      `Skill 来源未找到或不唯一：${name}；请指定 owner/repo`,
+      `Skill 来源未找到或不唯一：${name}；请指定 Codeup 命名空间/仓库路径`,
+    );
+  if (matches[0].legacyGithub)
+    throw failure(
+      "SOURCE_MIGRATION_REQUIRED",
+      "旧 GitHub 来源需要先登记对应 Codeup 来源",
+      2,
     );
   return matches[0];
 }
 export async function prepare(
   source: Source,
-  github: GitHub,
+  codeup: Codeup,
 ): Promise<Prepared> {
-  const metadata = await github.metadata(source.repo);
+  if (source.legacyGithub)
+    throw failure(
+      "SOURCE_MIGRATION_REQUIRED",
+      "旧 GitHub 来源需要先登记对应 Codeup 来源",
+      2,
+    );
+  const metadata = await codeup.metadata(source.repo);
   if (source.metadata && source.metadata.name !== metadata.name)
     throw failure(
       "SKILL_IDENTITY_CHANGED",
       `来源 Skill 名称已变化：${source.repo}`,
     );
-  const files = unpack(await github.archive(source.repo, metadata.commit));
+  const files = unpack(await codeup.archive(source.repo, metadata.commit));
   const entry = files.get("SKILL.md");
   const identity = entry ? parseSkill(entry.bytes) : undefined;
   if (
@@ -59,7 +72,7 @@ export async function prepare(
 }
 export async function installation(
   state: SkillState,
-  github: GitHub,
+  codeup: Codeup,
   names: string[],
   selection: Selection,
   report: ReportProgress = () => {},
@@ -70,7 +83,7 @@ export async function installation(
       "请指定 Skill 与 --target；交互模式可直接运行 install",
       2,
     );
-  await refresh(state, github);
+  await refresh(state, codeup);
   const selected = [...new Set(names.map((name) => chooseSource(state, name)))];
   const destinations = await roots(selection);
   const existing = await discover(state, selection);
@@ -78,7 +91,7 @@ export async function installation(
   const planned: { source: Source; path: string }[] = [];
   const paths = new Set<string>();
   for (const source of selected) {
-    if (!source.metadata) source.metadata = await github.metadata(source.repo);
+    if (!source.metadata) source.metadata = await codeup.metadata(source.repo);
     for (const root of destinations) {
       const matching = existing.find(
         (x) =>
@@ -104,14 +117,14 @@ export async function installation(
   const prepared = new Map<string, Prepared>();
   report({ completed: 0, total: planned.length, message: "准备下载 Skill" });
   for (const { source } of planned) {
-    github.signal.throwIfAborted();
+    codeup.signal.throwIfAborted();
     if (!prepared.has(source.repo)) {
       report({
         completed: 0,
         total: planned.length,
         message: `下载 ${source.metadata?.name ?? source.repo}`,
       });
-      prepared.set(source.repo, await prepare(source, github));
+      prepared.set(source.repo, await prepare(source, codeup));
     }
   }
   const oldRecords = [...state.records];
@@ -134,12 +147,12 @@ export async function installation(
         (x) => path === join(x, contents.metadata.name),
       );
       if (!root) throw failure("SKILL_TARGET_UNSAFE", "目标路径无效");
-      const stage = await stageFiles(root, contents.files, github.signal);
+      const stage = await stageFiles(root, contents.files, codeup.signal);
       try {
         locks.push(await reserve(path));
         if (await exists(path))
           throw failure("SKILL_TARGET_CHANGED", `预检后目标已存在：${path}`);
-        github.signal.throwIfAborted();
+        codeup.signal.throwIfAborted();
         const identity = await directoryIdentity(stage);
         await rename(stage, path);
         created.push({ path, identity });

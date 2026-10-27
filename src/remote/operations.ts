@@ -2,9 +2,9 @@ import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
-import { configDirectory } from "./config.js";
+import { configDirectory } from "../core/paths.js";
 import { RemoteClient, remoteResponse, remoteErrorMessage } from "./http.js";
-import { outcomeSchema, type OperationOutcome } from "./models.js";
+import { outcomeSchema, type OperationOutcome } from "./model.js";
 import { AppError } from "../core/errors.js";
 const common = {
   requestId: z.uuid(),

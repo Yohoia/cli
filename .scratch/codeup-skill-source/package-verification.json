@@ -1,0 +1,72 @@
+{
+  "artifact": "/Users/yohoia/Desktop/Yohoia/yoho-cli/artifacts/yoho-cli-0.6.5.tgz",
+  "sha256": "2bdb6afe63620f0c72862bef137dc9471bb3136164f9d5944340905f636f166e",
+  "size": 553876,
+  "steps": [
+    {
+      "command": "skill list --target agents",
+      "seconds": 2.12,
+      "total": 3,
+      "statuses": [
+        "available",
+        "available",
+        "available"
+      ]
+    },
+    {
+      "command": "skill list --target agents",
+      "seconds": 0.74,
+      "total": 3,
+      "statuses": [
+        "available",
+        "available",
+        "available"
+      ]
+    },
+    {
+      "command": "skill install yoho-standard-readme yoho-retro-poster speckit --target agents",
+      "seconds": 3.43,
+      "total": 3,
+      "statuses": [
+        "installed",
+        "installed",
+        "installed"
+      ]
+    },
+    {
+      "command": "skill update --all --target agents",
+      "seconds": 1.06,
+      "total": 3,
+      "statuses": [
+        "updated",
+        "unchanged",
+        "unchanged"
+      ]
+    },
+    {
+      "command": "skill uninstall --all --yes",
+      "seconds": 0.1,
+      "total": 3,
+      "statuses": [
+        "uninstalled",
+        "uninstalled",
+        "uninstalled"
+      ]
+    },
+    {
+      "command": "skill source list",
+      "seconds": 0.09,
+      "total": 3,
+      "statuses": [
+        "registered",
+        "registered",
+        "registered"
+      ]
+    }
+  ],
+  "noGhExecution": true,
+  "originalUserSkillsUntouched": true,
+  "sameCommitLocalChangesRestored": true,
+  "uninstallKeptSources": true,
+  "quotedConfigurationPathPassed": true
+}

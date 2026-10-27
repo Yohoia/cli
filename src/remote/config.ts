@@ -1,15 +1,9 @@
 import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { configDirectory } from "../core/paths.js";
 import { z } from "zod";
 import { AppError, systemErrorCode } from "../core/errors.js";
 
-export function configDirectory(): string {
-  return (
-    process.env.YOHO_CONFIG_DIR ??
-    join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "yoho")
-  );
-}
 export function normalizeServer(raw: string): string {
   let url: URL;
   try {

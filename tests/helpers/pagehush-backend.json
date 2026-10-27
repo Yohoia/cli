@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/Yohoia/PageHush.git",
+  "revision": "09f908c47628d866a63071baf73d278331b5a7b8",
+  "lockfile": "package-lock.json",
+  "lockfileSha256": "79ae854799b565bfaca51e3e1d9b0f109f29fc7054bb1d8fac4c5866c9db0c18",
+  "entry": "packages/api/src/test-support/integration.ts",
+  "loader": "node_modules/tsx/dist/loader.mjs",
+  "build": ["run", "build", "--workspace", "@pagehush/shared"],
+  "artifacts": ["packages/shared/dist/index.js", "packages/shared/dist"]
+}

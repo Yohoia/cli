@@ -17,13 +17,15 @@ export const metadataSchema = z.object({
 export type Metadata = z.infer<typeof metadataSchema>;
 const repoSchema = z
   .string()
-  .regex(/^[a-z0-9][a-z0-9-]*\/[a-z0-9_.-]+$/)
+  .max(512)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9_.-]*(?:\/[A-Za-z0-9_.-]+)+$/)
   .refine(
     (value) => !value.split("/").some((part) => part === "." || part === ".."),
   );
 export const sourceSchema = z.object({
   repo: repoSchema,
   metadata: metadataSchema.optional(),
+  legacyGithub: z.literal(true).optional(),
 });
 export const recordSchema = z.object({
   repo: repoSchema,
@@ -34,7 +36,7 @@ export const recordSchema = z.object({
 });
 export type InstallRecord = z.infer<typeof recordSchema>;
 export const stateSchema = z.object({
-  version: z.literal(1),
+  version: z.literal(2),
   sources: z.array(sourceSchema),
   records: z.array(recordSchema),
 });
@@ -60,7 +62,13 @@ export type UpdateScope =
 export type CatalogItem = {
   repo: string;
   version?: Metadata["version"];
-  targets?: { path: string; installed: boolean; version?: string }[];
+  targets?: {
+    path: string;
+    installed: boolean;
+    occupied?: boolean;
+    version?: string;
+    message?: string;
+  }[];
 } & (
   | {
       status: "available";
@@ -151,16 +159,27 @@ export function failure(
 }
 export function repository(raw: string): string {
   const value = raw
-    .replace(/^https:\/\/github\.com\//i, "")
+    .replace(/^https:\/\/codeup\.aliyun\.com\//i, "")
+    .replace(/^git@codeup\.aliyun\.com:/i, "")
+    .replace(/^ssh:\/\/git@codeup\.aliyun\.com\//i, "")
     .replace(/\/$/, "")
-    .replace(/\.git$/i, "")
-    .toLowerCase();
+    .replace(/\.git$/i, "");
   const parsed = repoSchema.safeParse(value);
   if (!parsed.success)
     throw failure(
       "INVALID_SOURCE",
-      "来源必须是 owner/repo 或 GitHub 仓库链接",
+      "来源必须是 Codeup 命名空间/仓库路径、HTTPS 链接或 SSH 克隆地址",
       2,
     );
   return parsed.data;
+}
+export const codeupNamespace = "69aa892db28d0aba0f5ed47e";
+export const initialSkills = [
+  "yoho-standard-readme",
+  "yoho-retro-poster",
+  "yoho-speckit",
+];
+export function migratedRepository(repo: string): string {
+  const skill = initialSkills.find((name) => repo === `yohoia/${name}`);
+  return skill ? `${codeupNamespace}/${skill}` : repo;
 }

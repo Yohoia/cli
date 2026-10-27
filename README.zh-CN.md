@@ -1,6 +1,6 @@
 # Yoho CLI
 
-一个使用 TypeScript 编写的本地 CLI，用于管理 PageHush 远程文章和 GitHub Agent Skill。
+一个使用 TypeScript 编写的本地 CLI，用于管理 PageHush 远程文章和 Codeup Agent Skill。
 
 [English](README.md)
 
@@ -9,7 +9,7 @@
 Yoho 为终端用户或本地产品提供一套确定性的命令接口，处理两类工作：
 
 - `yoho blog` 通过 PageHush API 读取和写入文章。
-- `yoho skill` 发现 GitHub Skill 来源，并将完整 Skill 目录安装或更新到项目级、用户级目标目录。
+- `yoho skill` 发现 Codeup Skill 来源，并将完整 Skill 目录安装或更新到项目级、用户级目标目录。
 
 调用方可以为业务命令添加 `--json`，获得稳定的结构化结果。PageHush 是文章的权威来源：CLI 不扫描本地博客目录，不修改本地文章文件，也不提供双向同步。
 
@@ -18,6 +18,7 @@ Yoho 为终端用户或本地产品提供一套确定性的命令接口，处理
 ### 环境要求
 
 - Node.js 24 或更高版本。
+- Skill 命令需要 Git、OpenSSH 及有 Codeup 仓库访问权限的 SSH 密钥。
 - 在本仓库构建时使用 pnpm 11.25.0。
 - 使用 `yoho blog` 和 `yoho auth` 前，需要一个兼容的 PageHush API。
 - 当前安装验收目标为 macOS；现有验收记录不覆盖 Linux 和 Windows 的安装。
@@ -28,7 +29,7 @@ Yoho 为终端用户或本地产品提供一套确定性的命令接口，处理
 pnpm install --frozen-lockfile
 pnpm check
 pnpm pack --pack-destination artifacts
-npm install --global ./artifacts/yoho-cli-0.6.3.tgz
+npm install --global ./artifacts/yoho-cli-0.6.6.tgz
 yoho --version
 yoho --help
 ```
@@ -36,14 +37,14 @@ yoho --help
 如果系统级 npm 目录不可写，可以安装到用户目录：
 
 ```bash
-npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.6.3.tgz
+npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.6.6.tgz
 ```
 
 如果 `$HOME/.local/bin` 尚未加入 `PATH`，请先加入。
 
 ### 第一条可运行命令
 
-Skill 管理不需要 PageHush 登录。先查看已登记的 GitHub 来源及其 Skill：
+Skill 管理不需要 PageHush 登录。先查看已登记的 Codeup 来源及其 Skill：
 
 ```bash
 yoho skill list
@@ -75,7 +76,7 @@ yoho blog list
 | 命令组        | 权威来源                           | 主要结果                             |
 | ------------- | ---------------------------------- | ------------------------------------ |
 | `yoho blog`   | PageHush 远程文章 API              | 文章、版本、发布/删除操作及恢复记录  |
-| `yoho skill`  | 已登记的 GitHub 仓库和本地目标目录 | Skill 目录、安装状态及逐目标更新结果 |
+| `yoho skill`  | 已登记的 Codeup 仓库和本地目标目录 | Skill 目录、安装状态及逐目标更新结果 |
 | `yoho auth`   | PageHush 设备授权                  | 按服务隔离、保存于系统凭据存储的令牌 |
 | `yoho --json` | 同一次命令执行                     | stdout 上的机器可读成功或失败结果    |
 
@@ -163,23 +164,23 @@ yoho blog delete 'ARTICLE_UUID' --yes --if-match 'REVISION_FROM_PREVIEW' --json
 
 ## 安装、更新和删除 Skill
 
-Skill 命令使用当前用户登记的 GitHub 来源，不需要 PageHush 授权。新配置默认包含以下来源：
+Skill 命令使用当前用户登记的 Codeup 来源，不需要 PageHush 授权。新配置默认包含以下来源：
 
-- `Yohoia/yoho-standard-readme`
-- `Yohoia/yoho-retro-poster`
-- `Yohoia/yoho-speckit`（Skill 名称为 `speckit`）
+- `69aa892db28d0aba0f5ed47e/yoho-standard-readme`
+- `69aa892db28d0aba0f5ed47e/yoho-retro-poster`
+- `69aa892db28d0aba0f5ed47e/yoho-speckit`（Skill 名称为 `speckit`）
 
 使用以下命令管理来源：
 
 ```bash
 yoho skill source list
-yoho skill source add owner/repo
-yoho skill source add https://github.com/owner/repo
+yoho skill source add namespace/repo
+yoho skill source add https://codeup.aliyun.com/namespace/repo
 yoho skill source refresh
-yoho skill source remove owner/repo
+yoho skill source remove namespace/repo
 ```
 
-来源按当前用户保存，各项目共用。来源不可用时会保留上次目录并报告原因，但安装和更新必须取得当前提交。公开仓库无需 GitHub 登录即可下载；私有仓库复用本机 `gh auth login` 会话。CLI 不保存 GitHub 令牌。移除来源会暂停更新但不会卸载已安装的 Skill；重新添加后可以继续管理。
+来源按当前用户保存，各项目共用。来源不可用时会保留上次目录并报告原因，但安装和更新必须取得当前提交。读取统一使用 Git + SSH，不访问 GitHub、不调用 `gh`。需要安装 Git 和 OpenSSH，并在 Codeup 登记有仓库访问权限的 SSH 公钥。默认自动使用已有的 `~/.ssh/github_codeup_sync_ed25519`，否则复用 SSH 配置/agent；可用 `YOHO_SKILL_SSH_KEY` 指定其他私钥，也支持标准 `GIT_SSH_COMMAND` 配置。私钥内容不写入 CLI 状态或缓存。旧三个 Yohoia 来源及安装记录会自动迁移到对应 Codeup 镜像；未确认映射的旧 GitHub 来源保留为不可用，需手动替换。移除来源会暂停更新但不会卸载已安装的 Skill；重新添加后可以继续管理。
 
 ### 安装目标
 
@@ -245,7 +246,7 @@ yoho skill uninstall speckit
 # 只查看将删除的目录与安装记录
 yoho skill uninstall speckit --dry-run
 
-# 脚本中明确确认删除；支持多个名称或 owner/repo
+# 脚本中明确确认删除；支持多个名称或 namespace/repo
 yoho skill uninstall speckit yoho-retro-poster --yes
 
 # 卸载全部受管 Skill，保留来源列表
@@ -254,7 +255,7 @@ yoho skill uninstall --all --yes
 
 `yoho skill uninstall` 不带名称时展示已安装的受管 Skill 多选列表；上下键移动、空格勾选，选一项或多项后按 Enter 继续，`a` 全选或清空、`i` 反选、Ctrl+C 取消。列表按 Skill 合并安装位置并显示数量，确认时展开实际目录；未安装项和不受管的第三方 Skill 不列入可选项。没有已安装项时直接提示并退出。
 
-`yoho skill remove` 是 `uninstall` 的别名。卸载只删除本地文件和安装记录，始终保留来源登记；`yoho skill list` 仍展示该 Skill，状态为 `not installed`，可以直接重新安装。只有 `yoho skill source remove owner/repo` 会移除来源登记，这不会删除已安装文件。
+`yoho skill remove` 是 `uninstall` 的别名。卸载只删除本地文件和安装记录，始终保留来源登记；`yoho skill list` 仍展示该 Skill，状态为 `not installed`，可以直接重新安装。只有 `yoho skill source remove namespace/repo` 会移除来源登记，这不会删除已安装文件。
 
 删除完全离线，默认处理当前项目、用户标准目录中的受管安装，以及其他项目的已记录位置，不再询问安装范围。没有来源匹配且没有记录的第三方 Skill 不进入删除范围。未记录的手动副本需要本地缓存的来源名称与 SKILL.md 名称唯一对应；CLI 不会扫描未记录的其他项目。
 
@@ -298,17 +299,30 @@ CLI 不提供已有文章正文、标题或元数据的编辑，不提供文章�
 pnpm install --frozen-lockfile
 pnpm check
 pnpm format:check
-pnpm test:file tests/remote-migration.test.mjs
+pnpm test:prepare
 pnpm test
 ```
 
-测试套件会构建并在子进程中运行安装后的 CLI。远程协议测试使用隔离的本地 HTTP 夹具、配置、凭据和存储，不会向生产文章库写入。远程测试默认使用相邻的 `../PageHush` 源码目录；该目录位于其他位置时设置：
+测试先构建并安装 CLI，再通过子进程验收。远程测试使用隔离数据库、凭据和素材存储。后端版本由 `tests/helpers/pagehush-backend.json` 固定，包括 Git 提交、依赖锁文件摘要、测试入口及构建产物；不直接运行相邻仓库的任意工作区。
+
+首次运行完整测试前准备后端：
 
 ```bash
-PAGEHUSH_SOURCE=/path/to/PageHush pnpm test
+pnpm test:prepare
+pnpm test
 ```
 
-Skill 测试使用隔离的 GitHub 协议夹具、伪 `gh` 授权边界、临时目录、Python 3 和系统 `tar` 命令。测试不会读取真实 GitHub 凭据，也不会修改真实 Skill 目录。
+如果本机已有 PageHush Git 仓库，可以用它提供固定提交；该命令在 `.cache/test-backends/` 创建独立检出，不使用或修改其未提交文件：
+
+```bash
+pnpm test:prepare --source /path/to/PageHush
+# 本机 npm 缓存完整时可离线准备
+pnpm test:prepare --source /path/to/PageHush --offline
+```
+
+准备脚本使用 `npm ci` 安装锁定依赖并构建共享包，可重复运行。测试启动检查后端提交、工作树、锁文件及必要产物。`PAGEHUSH_SOURCE` 仍可指向其他已准备的干净检出，但必须匹配固定版本；不匹配会明确失败。
+
+Skill 测试使用真实本机 Git 仓库、隔离 SSH 协议边界、可控来源故障、临时目录、Python 3 和系统 `tar` 命令。测试不会读取真实 SSH 凭据，也不会修改真实 Skill 目录。
 
 ## 许可证
 

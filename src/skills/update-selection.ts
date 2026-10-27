@@ -1,8 +1,9 @@
 import { AppError } from "../core/errors.js";
 import { withProgress } from "../cli/presentation.js";
-import { GitHub } from "./github.js";
+import { Codeup } from "./codeup.js";
 import { checkUpdates } from "./update.js";
-import { discoverUpdates } from "./inventory.js";
+import { planUpdates, targetMatches, type UpdatePlan } from "./update-plan.js";
+import { refresh } from "./codeup.js";
 import { prompt, terminal } from "./prompt.js";
 import {
   failure,
@@ -14,41 +15,30 @@ import {
 
 type UpdateInput =
   | { kind: "complete"; result: SkillResult }
-  | { kind: "selection"; names: string[]; scope: UpdateScope; paths: string[] };
+  | { kind: "selection"; plan: UpdatePlan; paths: string[] };
 const version = (value: string | undefined) =>
   value ? (value.startsWith("v") ? value : `v${value}`) : "未标注";
 
 export async function selectUpdates(
   state: SkillState,
-  github: GitHub,
+  codeup: Codeup,
   names: string[],
   scope: UpdateScope,
 ): Promise<UpdateInput> {
   const all = scope.kind === "automatic" ? scope.all : scope.selection.all;
   if (names.length || all) {
-    const installed = await discoverUpdates(state, scope);
+    await withProgress("正在检查 Skill 来源…", () => refresh(state, codeup));
+    const plan = await planUpdates(state, names, scope);
     return {
       kind: "selection",
-      names,
-      scope,
-      paths: installed
-        .filter(
-          (item) =>
-            all ||
-            names.some(
-              (name) =>
-                item.name === name ||
-                item.path === name ||
-                item.record?.repo === name,
-            ),
-        )
-        .map((item) => item.path),
+      plan,
+      paths: plan.targets.map((target) => target.item.path),
     };
   }
   if (!terminal())
     throw failure("INVALID_ARGUMENT", "请指定要更新的 Skill 或 --all", 2);
   const checked = await withProgress("正在检查可用更新…", () =>
-    checkUpdates(state, github, scope),
+    checkUpdates(state, codeup, scope),
   );
   if (!checked.ready.length) {
     const result: SkillResult = {
@@ -101,18 +91,20 @@ export async function selectUpdates(
         id: repo,
         label: `${first?.item.name ?? repo} · ${repo}`,
         status: latest ? `${old} → ${version(latest)}` : "有更新",
-        description: `更新 ${entries.length} 个已有安装位置，覆盖本地修改`,
+        description: `更新 ${checked.plan.targets.filter((target) => targetMatches(target, repo)).length} 个已有安装位置，覆盖本地修改`,
       };
     }),
     true,
-    github.signal,
+    codeup.signal,
   );
+  const plan = {
+    targets: checked.plan.targets.filter((target) =>
+      names.some((name) => targetMatches(target, name)),
+    ),
+  };
   return {
     kind: "selection",
-    names,
-    scope,
-    paths: checked.ready
-      .filter((entry) => names.includes(entry.source.repo))
-      .map((entry) => entry.item.path),
+    plan,
+    paths: plan.targets.map((target) => target.item.path),
   };
 }
