@@ -7,7 +7,7 @@ import { articleSchema, listSchema } from "../../remote/model.js";
 import { resolveServer } from "../../remote/config.js";
 import type { CatalogItem, SkillResult } from "../../skills/model.js";
 import { cleanText, wrapText } from "../presentation.js";
-import { Terminal, color, fit, pad, type Key } from "./terminal.js";
+import { Terminal, color, fit, fitEnd, pad, type Key } from "./terminal.js";
 import { command, type CommandResponse } from "./command.js";
 import {
   listState,
@@ -590,38 +590,28 @@ class InteractiveApp {
         : page === "skill"
           ? "Enter Open  |  I Install  |  U Update  |  D Delete  |  M Sources"
           : "Enter Open  |  N Add  |  D Remove";
-    return `↑↓ | Space Select | ${action.replaceAll("  |  ", " | ")} | / Search | S ${state.sort === "date" ? "Date" : state.sort === "status" ? "Status" : "Name"} | O ${state.ascending ? "↑" : "↓"} | H/L Page | Q Back | ? More`;
+    return `↑↓ | Space Select | ${action.replaceAll("  |  ", " | ")} | / Search | S ${state.sort === "date" ? "Date" : state.sort === "status" ? "Status" : "Name"} | O ${state.ascending ? "↑" : "↓"} | H/L Page | ${state.search ? "Esc Clear | " : ""}Q Back | ? More`;
   }
   private async list(page: Page) {
     const state = listState(page);
     let searching = false;
-    let originalQuery = "";
     await this.load(page, state);
     for (;;) {
       const rows = visibleRows(state);
       state.cursor = Math.max(0, Math.min(state.cursor, rows.length - 1));
       const controls = searching
-        ? "Type to search  |  Enter Apply  |  Esc Cancel"
+        ? "Enter Apply | Backspace | Ctrl+U Clear | Esc Clear"
         : this.controls(page, state);
       // Reserve one line for the query/error without displacing the key legend.
       const height = Math.max(
         1,
-        this.terminal.contentHeight(controls) -
-          (state.notice || state.search || searching ? 1 : 0),
+        this.terminal.contentHeight(controls) - (state.notice ? 1 : 0),
       );
       const start = Math.floor(state.cursor / height) * height;
       const body: string[] = [];
       if (state.notice)
         body.push(
           " " + color(fit(state.notice, this.terminal.width - 2), "red"),
-        );
-      else if (state.search || searching)
-        body.push(
-          " " +
-            color(
-              `/ ${fit(state.search, this.terminal.width - 6)}${searching ? "▏" : ""}`,
-              searching ? "cyan" : "gray",
-            ),
         );
       if (!rows.length)
         body.push(
@@ -657,22 +647,42 @@ class InteractiveApp {
               : line,
         );
       }
+      const filtering = searching || !!state.search;
+      const subtitle = state.search
+        ? `(${rows.length}/${state.rows.length}; ${state.selected.size} selected)`
+        : searching
+          ? "(type to search)"
+          : `${state.selected.size}/${rows.length} selected · ${rows.length ? Math.floor(state.cursor / height) + 1 : 1}/${Math.max(1, Math.ceil(rows.length / height))}`;
+      const queryWidth = Math.max(
+        1,
+        this.terminal.width - stringWidth(subtitle) - 13 - (searching ? 1 : 0),
+      );
       this.terminal.frame(
-        titleFor[page],
+        filtering
+          ? `/ Search: ${fitEnd(state.search, queryWidth)}${searching ? "_" : ""}`
+          : titleFor[page],
         body,
         controls,
-        `${state.selected.size}/${rows.length} selected · ${rows.length ? Math.floor(state.cursor / height) + 1 : 1}/${Math.max(1, Math.ceil(rows.length / height))}`,
+        subtitle,
+        filtering ? "yellow" : "purple",
       );
       const key = await this.terminal.read();
       if (searching) {
         if (key.name === "escape") {
-          state.search = originalQuery;
+          state.search = "";
           searching = false;
         } else if (key.name === "enter") searching = false;
+        else if (key.name === "clear") state.search = "";
         else if (key.name === "backspace")
           state.search = Array.from(state.search).slice(0, -1).join("");
         else if (key.name === "text") state.search += key.text;
         state.cursor = 0;
+        continue;
+      }
+      if (key.name === "escape" && state.search) {
+        state.search = "";
+        state.cursor = 0;
+        state.selected.clear();
         continue;
       }
       if (back(key)) return;
@@ -696,7 +706,6 @@ class InteractiveApp {
           all ? state.selected.delete(row.id) : state.selected.add(row.id),
         );
       } else if (value === "/") {
-        originalQuery = state.search;
         searching = true;
         state.selected.clear();
       } else if (key.name === "tab") {

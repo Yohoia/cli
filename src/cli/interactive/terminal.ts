@@ -4,14 +4,21 @@ import stringWidth from "string-width";
 import { cleanText, wrapText } from "../presentation.js";
 
 export type Key = { name: string; text: string };
-export type Color = "cyan" | "green" | "purple" | "gray" | "red";
-const colors = { cyan: 36, green: 32, purple: 35, gray: 90, red: 31 };
+export type Color = "cyan" | "green" | "purple" | "gray" | "red" | "yellow";
+const colors = {
+  cyan: "36",
+  green: "32",
+  purple: "35",
+  gray: "38;5;244",
+  red: "31",
+  yellow: "33",
+};
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 export function color(text: string, tone: Color, bold = false): string {
   return process.env.NO_COLOR !== undefined
     ? text
-    : `\x1b[${bold ? "1;" : ""}${colors[tone]}m${text}\x1b[0m`;
+    : `\x1b[${bold ? "1" : "0"};${colors[tone]}m${text}\x1b[0m`;
 }
 export function fit(text: string, width: number): string {
   const value = cleanText(text).replace(/\s+/gu, " ");
@@ -26,6 +33,17 @@ export function fit(text: string, width: number): string {
 export function pad(text: string, width: number): string {
   const value = fit(text, width);
   return value + " ".repeat(Math.max(0, width - stringWidth(value)));
+}
+export function fitEnd(text: string, width: number): string {
+  const value = cleanText(text).replace(/[\r\n]/gu, " ");
+  if (stringWidth(value) <= width) return value;
+  const ellipsis = ".".repeat(Math.min(3, width));
+  let tail = "";
+  for (const { segment } of [...graphemes.segment(value)].reverse()) {
+    if (stringWidth(ellipsis + segment + tail) > width) break;
+    tail = segment + tail;
+  }
+  return ellipsis + tail;
 }
 function legendLines(text: string, width: number): string[] {
   const lines: string[] = [];
@@ -120,7 +138,9 @@ export class Terminal {
               ? "backspace"
               : character === "\t"
                 ? "tab"
-                : "text";
+                : character === "\x15"
+                  ? "clear"
+                  : "text";
       if (name !== "text" || character >= " ") this.emit(name, character);
     }
   };
@@ -176,7 +196,13 @@ export class Terminal {
     process.stdout.write(output);
     this.previous = screen;
   }
-  frame(title: string, body: string[], controls: string, subtitle = "") {
+  frame(
+    title: string,
+    body: string[],
+    controls: string,
+    subtitle = "",
+    headingTone: Color = "purple",
+  ) {
     const footer = legendLines(controls, this.width - 2).map((line) =>
       color(" " + line, "gray"),
     );
@@ -184,7 +210,7 @@ export class Terminal {
     const heading = fit(title, this.width - 2);
     const lines = [
       " " +
-        color(heading, "purple", true) +
+        color(heading, headingTone, headingTone === "purple") +
         (subtitle && stringWidth(heading) + 5 < this.width
           ? color(
               "  " + fit(subtitle, this.width - stringWidth(heading) - 4),

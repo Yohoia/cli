@@ -94,15 +94,15 @@ test("Skill search clears hidden selections, and source management remains offli
     ["skill"],
     [
       { wait: "0/3 selected", keys: " /" },
-      { wait: "Type to search", keys: "speckit\r" },
-      { wait: "0/1 selected", keys: "\r" },
+      { wait: "(type to search)", keys: "speckit\r" },
+      { wait: "(1/3; 0 selected)", keys: "\r" },
       { wait: "Status:", keys: "q" },
-      { wait: "0/1 selected", keys: "m" },
+      { wait: "(1/3; 0 selected)", keys: "m" },
       { wait: "Skill Sources  ", keys: "n" },
       { wait: "Add Source", keys: "team/new-skill\r" },
       { wait: "registered  team/new-skill", keys: "\r" },
       { wait: "0/4 selected", keys: "q" },
-      { wait: "0/1 selected", keys: "q" },
+      { wait: "(1/4; 0 selected)", keys: "q" },
     ],
     { columns: 60, rows: 24 },
   );
@@ -111,6 +111,40 @@ test("Skill search clears hidden selections, and source management remains offli
     await readFile(join(f.root, "config/skills.json"), "utf8"),
   );
   assert.ok(state.sources.some((source) => source.repo === "team/new-skill"));
+});
+
+test("search uses Mole's yellow header and gray toolbar, with clear and apply in wide and narrow terminals", async (t) => {
+  for (const columns of [120, 60])
+    await t.test(`${columns} columns`, async (t) => {
+      const f = await skillFixture(t);
+      const options = {
+        ...f.options,
+        env: { ...f.options.env, NO_COLOR: undefined },
+      };
+      const result = await terminal(
+        options,
+        ["skill"],
+        [
+          { wait: "0/3 selected", keys: "/" },
+          { wait: "(type to search)", keys: "speckit" },
+          { wait: "/ Search: speckit_", keys: "\u0015" },
+          { wait: "(type to search)", keys: "missing-skill\r" },
+          { wait: "(0/3; 0 selected)", keys: "\u001b" },
+          { wait: "0/3 selected", keys: "/" },
+          { wait: "(type to search)", keys: "speckit\r" },
+          { wait: "(1/3; 0 selected)", keys: "\u001b" },
+          { wait: "0/3 selected", keys: "q" },
+        ],
+        { columns, rows: 24 },
+      );
+      assert.match(result.terminal, /\x1b\[0;33m\/ Search: speckit_/u);
+      assert.match(
+        result.terminal,
+        /\x1b\[0;38;5;244m Enter Apply \| Backspace \| Ctrl\+U Clear \| Esc Clear\x1b\[0m/u,
+      );
+      assert.ok(!result.terminal.includes("\x1b[90m"));
+      assert.ok(!result.terminal.includes("Type to search  |"));
+    });
 });
 
 test("Blog multi-select previews revisions, cancels by default, then deletes only confirmed articles", async (t) => {

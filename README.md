@@ -29,7 +29,7 @@ The package is marked private in `package.json` and is not published to npm. Fro
 pnpm install --frozen-lockfile
 pnpm check
 pnpm pack --pack-destination artifacts
-npm install --global ./artifacts/yoho-cli-0.7.0.tgz
+npm install --global ./artifacts/yoho-cli-0.7.1.tgz
 yoho --version
 yoho --help
 ```
@@ -37,7 +37,7 @@ yoho --help
 If the system-wide npm prefix is not writable, install into a user directory:
 
 ```bash
-npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.7.0.tgz
+npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.7.1.tgz
 ```
 
 Add `$HOME/.local/bin` to `PATH` if it is not already there.
@@ -66,6 +66,8 @@ yoho blog list
 ## Terminal interface
 
 Run `yoho` to open the Mole-style menu with Blog, Skill, Auth, and Settings. Use `yoho blog` or `yoho skill` to enter a list directly. Arrow keys or J/K move, Space selects, Enter opens details, `/` searches as you type, H/L change pages, S/O change sorting, A selects all, Tab inverts, R refreshes, and Q/Esc returns. Blog offers N to upload, P to publish, and D to delete; Skills offers I to install, U to update, D to uninstall, and M to manage sources. Destructive operations preview their targets and default to cancel. Ctrl+C waits for operation cleanup and restores the terminal.
+
+Search uses Mole’s yellow `/ Search:` header and matching counts. Enter applies, Backspace edits, Ctrl+U clears the query, and Esc clears the search. All shortcut bars use Mole’s ANSI 256-color gray 244.
 
 Existing complete commands and JSON calls remain available. Without a terminal, or with TERM=dumb, the bare entry point prints help.
 

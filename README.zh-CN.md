@@ -29,7 +29,7 @@ Yoho 为终端用户或本地产品提供一套确定性的命令接口，处理
 pnpm install --frozen-lockfile
 pnpm check
 pnpm pack --pack-destination artifacts
-npm install --global ./artifacts/yoho-cli-0.7.0.tgz
+npm install --global ./artifacts/yoho-cli-0.7.1.tgz
 yoho --version
 yoho --help
 ```
@@ -37,7 +37,7 @@ yoho --help
 如果系统级 npm 目录不可写，可以安装到用户目录：
 
 ```bash
-npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.7.0.tgz
+npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.7.1.tgz
 ```
 
 如果 `$HOME/.local/bin` 尚未加入 `PATH`，请先加入。
@@ -68,6 +68,8 @@ yoho blog list
 直接输入 `yoho` 打开 Mole 风格主菜单，在 Blog、Skill、Auth 和 Settings 之间选择。也可以用 `yoho blog` 或 `yoho skill` 直接进入列表。
 
 方向键或 J/K 移动，空格多选，Enter 打开详情，`/` 即时搜索，H/L 翻页，S 切换排序字段，O 切换排序方向，A 全选或清空，Tab 反选，R 刷新，Q/Esc 返回。Blog 中 N 上传草稿、P 发布、D 删除；Skill 中 I 安装、U 更新、D 卸载、M 管理来源。发布、删除和覆盖更新都有目标预览与默认取消的确认。Ctrl+C 会等待当前操作清理后退出。
+
+搜索使用与 Mole 一致的黄色顶部 `/ Search:` 输入，显示匹配数量；Enter 应用、Backspace 退格、Ctrl+U 清空，Esc 清除搜索。底部快捷键统一使用 Mole 的 ANSI 256 色 244 灰色。
 
 交互界面接管整屏和键盘，退出后恢复终端。下列完整命令及 `--json` 调用继续可用；非终端或 TERM=dumb 环境下，无参数入口显示帮助。
 
