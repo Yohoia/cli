@@ -43,20 +43,20 @@ PageHush is the authoritative article store; local Markdown is an upload input. 
 Requires **Node.js 24+**. Skill commands also need Git, OpenSSH and authorized Codeup SSH access. Users do not need pnpm or a source checkout. Full installation acceptance currently targets macOS.
 
 ```bash
-npm install --global @yohoia/cli@latest
+npm install --global @yohoia/cli@latest --registry=https://registry.npmjs.org/
 yoho --version
 yoho doctor
 yoho
 ```
 
-Run the same install command to upgrade. These npm commands become available after the first npm release; until then, use the source build below.
+Run the same install command to upgrade. The examples use the official npm registry; source builds are available below for developers.
 
 ```bash
 # Run temporarily without a global install
-npx --package=@yohoia/cli@latest yoho
+npx --registry=https://registry.npmjs.org/ --package=@yohoia/cli@latest yoho
 
 # Pin a version
-npm install --global @yohoia/cli@0.8.0
+npm install --global @yohoia/cli@0.8.1 --registry=https://registry.npmjs.org/
 
 # Remove the CLI while keeping configuration and installed Skills
 npm uninstall --global @yohoia/cli
@@ -73,7 +73,7 @@ If the global prefix is not writable, use `--prefix "$HOME/.local"` and add `$HO
 pnpm install --frozen-lockfile
 pnpm check
 pnpm release:pack
-npm install --global ./artifacts/release/yohoia-cli-0.8.0.tgz
+npm install --global ./artifacts/release/yohoia-cli-0.8.1.tgz
 yoho doctor
 ```
 

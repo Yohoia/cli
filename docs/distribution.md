@@ -2,12 +2,12 @@
 
 Yoho 的 npm 包名是 `@yohoia/cli`，命令名是 `yoho`，使用 MIT 许可证。用户需要 Node.js 24+，不需要 pnpm、TypeScript 或源码。Git 和 OpenSSH 仅用于 Skill 来源访问；PageHush 设备授权在用户运行 `yoho auth login` 时完成。
 
-当前仓库准备首个 npm 版本 `0.8.0`。首次发布完成之前，npm 安装命令尚不可用，可以使用源码构建的 tarball。正式发布以 [npm 包页面](https://www.npmjs.com/package/@yohoia/cli)和 [GitHub Releases](https://github.com/Yohoia/cli/releases) 为准。
+已完成首个 npm 版本 `0.8.0` 的发布，后续版本通过 GitHub Actions 发布。正式版本以 [npm 包页面](https://www.npmjs.com/package/@yohoia/cli)和 [GitHub Releases](https://github.com/Yohoia/cli/releases) 为准。
 
 ## 用户安装与升级
 
 ```bash
-npm install --global @yohoia/cli@latest
+npm install --global @yohoia/cli@latest --registry=https://registry.npmjs.org/
 yoho --version
 yoho doctor
 yoho
@@ -16,14 +16,14 @@ yoho
 再次执行同一条安装命令即可升级。临时运行与固定版本安装：
 
 ```bash
-npx --package=@yohoia/cli@latest yoho
-npm install --global @yohoia/cli@0.8.0
+npx --registry=https://registry.npmjs.org/ --package=@yohoia/cli@latest yoho
+npm install --global @yohoia/cli@0.8.1 --registry=https://registry.npmjs.org/
 ```
 
 没有系统目录写权限时，优先使用 Node.js 版本管理器，或明确指定用户前缀：
 
 ```bash
-npm install --global --prefix "$HOME/.local" @yohoia/cli@latest
+npm install --global --prefix "$HOME/.local" @yohoia/cli@latest --registry=https://registry.npmjs.org/
 ```
 
 将 `$HOME/.local/bin` 加入 shell 的 `PATH`。升级、卸载时使用相同的 `--prefix`，不要混用不同安装前缀。
@@ -32,7 +32,7 @@ npm install --global --prefix "$HOME/.local" @yohoia/cli@latest
 
 ```bash
 npm uninstall --global yoho-cli
-npm install --global @yohoia/cli@latest
+npm install --global @yohoia/cli@latest --registry=https://registry.npmjs.org/
 yoho --version
 yoho doctor
 ```
@@ -47,13 +47,13 @@ npm uninstall --global @yohoia/cli
 
 ## GitHub Release 安装包
 
-从对应版本的 Release 下载 `yohoia-cli-<version>.tgz` 和 `SHA256SUMS`，在下载目录验证校验值后安装。例如 `v0.8.0`：
+从对应版本的 Release 下载 `yohoia-cli-<version>.tgz` 和 `SHA256SUMS`，在下载目录验证校验值后安装。例如 `v0.8.1`：
 
 ```bash
 # macOS
 shasum -a 256 -c SHA256SUMS
 # Linux 对应命令：sha256sum --check SHA256SUMS
-npm install --global ./yohoia-cli-0.8.0.tgz
+npm install --global ./yohoia-cli-0.8.1.tgz
 ```
 
 升级时下载新版本并安装其 tarball。安装包仍需要 Node.js；它不是独立可执行文件。当前完整验收目标为 macOS，Linux 和 Windows 的安装兼容性尚未宣称通过。
@@ -80,9 +80,9 @@ pnpm check
 pnpm format:check
 pnpm test:prepare
 pnpm test
-pnpm release:pack v0.8.0
-pnpm release:verify artifacts/release/yohoia-cli-0.8.0.tgz
-npm publish ./artifacts/release/yohoia-cli-0.8.0.tgz --dry-run --ignore-scripts --access public
+pnpm release:pack v0.8.1
+pnpm release:verify artifacts/release/yohoia-cli-0.8.1.tgz
+npm publish ./artifacts/release/yohoia-cli-0.8.1.tgz --dry-run --ignore-scripts --access public
 ```
 
 `release:pack` 校验包元数据和标签后重新构建，将发布文件复制到临时目录、统一文件权限，再使用 `npm pack --ignore-scripts` 创建最终 tarball，检查内容白名单并生成 `SHA256SUMS`。统一权限避免本地和 CI 的文件权限差异改变安装包校验值，不会改动源文件权限。标签省略时仅准备本地包；GitHub 标签运行会自动读取标签。脚本拒绝标签与 `package.json` 版本不一致的发布。
@@ -93,12 +93,12 @@ npm publish ./artifacts/release/yohoia-cli-0.8.0.tgz --dry-run --ignore-scripts 
 
 维护者需要拥有 npm 的 `yohoia` 用户/组织命名空间和发布权限。GitHub 用户名不会自动授予同名 npm 命名空间权限。
 
-首次创建包时，在已验收的工作区由维护者登录 npm，发布已验证的同一个 tarball：
+`@yohoia/cli` 已完成首次包创建。以下命令仅供首次创建新包参考；本仓库后续请直接使用版本标签发版，不要重复发布已有版本。首次创建包时，在已验收的工作区登录 npm，发布同一个已验证 tarball：
 
 ```bash
 npm login
 npm whoami
-npm publish ./artifacts/release/yohoia-cli-0.8.0.tgz --access public --ignore-scripts
+npm publish ./artifacts/release/yohoia-cli-0.8.1.tgz --access public --ignore-scripts
 ```
 
 这一步会真实公开发布，不能用本地 dry-run 代替。账号登录、2FA 和首次发布由维护者完成；仓库不保存 npm Token。
@@ -115,6 +115,8 @@ npm publish ./artifacts/release/yohoia-cli-0.8.0.tgz --access public --ignore-sc
 
 OIDC 使用 GitHub 托管 runner。当前 npm 文档要求 npm CLI 至少 11.5.1、Node.js 至少 22.14.0；工作流使用 Node.js 24 自带的兼容 npm。无需设置 `NPM_TOKEN` 或 `NODE_AUTH_TOKEN`。
 
+新建连接的状态最初为 `Pending validation`，必须在两天内通过该工作流成功发布一个版本，才能绑定仓库的不可变身份并完成验证；只保存表单不会完成验证，未验证的连接会到期。
+
 参考：[npm Trusted Publishing](https://docs.npmjs.com/trusted-publishers/)、[GitHub Node.js 包发布](https://docs.github.com/en/actions/tutorials/publish-packages/publish-nodejs-packages)。
 
 ## 日常自动发版
@@ -122,9 +124,9 @@ OIDC 使用 GitHub 托管 runner。当前 npm 文档要求 npm CLI 至少 11.5.1
 版本变更通过普通代码提交完成。更新 `package.json` 的版本及文档中的版本示例，检查通过后，在对应提交上创建并推送匹配标签：
 
 ```bash
-# 示例：版本已更新到 0.8.1，并完成提交与推送
-git tag v0.8.1
-git push origin v0.8.1
+# 示例：版本已更新到 0.8.2，并完成提交与推送
+git tag v0.8.2
+git push origin v0.8.2
 ```
 
 `.github/workflows/release.yml` 按顺序执行：

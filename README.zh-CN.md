@@ -43,20 +43,20 @@ PageHush 是文章的权威来源；本地 Markdown 是上传输入。Skill 更�
 需要 **Node.js 24+**；Skill 功能还需要 Git、OpenSSH 和 Codeup SSH 访问权限。用户无需安装 pnpm 或克隆源码。当前完整安装验收目标为 macOS。
 
 ```bash
-npm install --global @yohoia/cli@latest
+npm install --global @yohoia/cli@latest --registry=https://registry.npmjs.org/
 yoho --version
 yoho doctor
 yoho
 ```
 
-再次执行安装命令即可升级。首次 npm 发布完成后上述命令才可用；发布前可使用下文源码构建方式。
+再次执行安装命令即可升级。以下示例明确使用 npm 官方源；开发者也可使用下文源码构建方式。
 
 ```bash
 # 临时运行，不全局安装
-npx --package=@yohoia/cli@latest yoho
+npx --registry=https://registry.npmjs.org/ --package=@yohoia/cli@latest yoho
 
 # 固定版本
-npm install --global @yohoia/cli@0.8.0
+npm install --global @yohoia/cli@0.8.1 --registry=https://registry.npmjs.org/
 
 # 卸载 CLI，保留配置和已安装 Skill
 npm uninstall --global @yohoia/cli
@@ -73,7 +73,7 @@ npm uninstall --global @yohoia/cli
 pnpm install --frozen-lockfile
 pnpm check
 pnpm release:pack
-npm install --global ./artifacts/release/yohoia-cli-0.8.0.tgz
+npm install --global ./artifacts/release/yohoia-cli-0.8.1.tgz
 yoho doctor
 ```
 
