@@ -29,7 +29,7 @@ The package is marked private in `package.json` and is not published to npm. Fro
 pnpm install --frozen-lockfile
 pnpm check
 pnpm pack --pack-destination artifacts
-npm install --global ./artifacts/yoho-cli-0.6.7.tgz
+npm install --global ./artifacts/yoho-cli-0.7.0.tgz
 yoho --version
 yoho --help
 ```
@@ -37,7 +37,7 @@ yoho --help
 If the system-wide npm prefix is not writable, install into a user directory:
 
 ```bash
-npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.6.7.tgz
+npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.7.0.tgz
 ```
 
 Add `$HOME/.local/bin` to `PATH` if it is not already there.
@@ -65,9 +65,13 @@ yoho blog list
 
 ## Terminal interface
 
-Ink, React, and Ink UI render lists, details, and results. Clack provides menus, loading indicators, and block progress bars for installation, updates, and removal. Progress counts actual destination directories and names the Skill being processed.
+Run `yoho` to open the Mole-style menu with Blog, Skill, Auth, and Settings. Use `yoho blog` or `yoho skill` to enter a list directly. Arrow keys or J/K move, Space selects, Enter opens details, `/` searches as you type, H/L change pages, S/O change sorting, A selects all, Tab inverts, R refreshes, and Q/Esc returns. Blog offers N to upload, P to publish, and D to delete; Skills offers I to install, U to update, D to uninstall, and M to manage sources. Destructive operations preview their targets and default to cancel. Ctrl+C waits for operation cleanup and restores the terminal.
 
-Use Space to select, `a` to select or clear all, and `i` to invert a selection. Press Enter to continue or Ctrl+C to cancel. Updates use recorded installation locations. Set `NO_COLOR=1` to disable colors. Redirected output has no progress animation. With `--json`, stdout contains one result; interaction and progress use stderr.
+Existing complete commands and JSON calls remain available. Without a terminal, or with TERM=dumb, the bare entry point prints help.
+
+Complete subcommands continue to use Ink, React, and Ink UI for lists, details, and results, with Clack menus and block progress bars for installation, updates, and removal. Progress counts actual destination directories. The interactive shell continuously redraws its pages and provides cancellable loading indicators.
+
+In command-mode Clack menus, use Space to select, `a` to select or clear all, and `i` to invert a selection. Press Enter to continue or Ctrl+C to cancel. Updates use recorded installation locations. Set `NO_COLOR=1` to disable colors. Redirected output has no progress animation. With `--json`, stdout contains one result; interaction and progress use stderr.
 
 The build bundles dependencies into ESM with `dist/cli.js` as its entry and additional files in `dist/chunks/`. The source has no direct Chalk or Listr2 dependency.
 

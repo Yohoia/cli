@@ -29,7 +29,7 @@ Yoho 为终端用户或本地产品提供一套确定性的命令接口，处理
 pnpm install --frozen-lockfile
 pnpm check
 pnpm pack --pack-destination artifacts
-npm install --global ./artifacts/yoho-cli-0.6.7.tgz
+npm install --global ./artifacts/yoho-cli-0.7.0.tgz
 yoho --version
 yoho --help
 ```
@@ -37,7 +37,7 @@ yoho --help
 如果系统级 npm 目录不可写，可以安装到用户目录：
 
 ```bash
-npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.6.7.tgz
+npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.7.0.tgz
 ```
 
 如果 `$HOME/.local/bin` 尚未加入 `PATH`，请先加入。
@@ -65,9 +65,15 @@ yoho blog list
 
 ## 终端界面
 
-列表、详情和结果由 Ink、React 和 Ink UI 统一渲染。安装、更新与删除使用 Clack 交互及方块进度条，进度按实际目标目录计数，并显示当前处理的 Skill。检查来源时使用加载提示。
+直接输入 `yoho` 打开 Mole 风格主菜单，在 Blog、Skill、Auth 和 Settings 之间选择。也可以用 `yoho blog` 或 `yoho skill` 直接进入列表。
 
-多选支持空格选择、`a` 全选或清空、`i` 反选，按 Enter 继续，按 Ctrl+C 取消。更新自动处理已记录的安装位置。设置 `NO_COLOR=1` 可关闭颜色；重定向输出时不播放进度动画。`--json` 的 stdout 始终只有一个结果，交互与进度写入 stderr。
+方向键或 J/K 移动，空格多选，Enter 打开详情，`/` 即时搜索，H/L 翻页，S 切换排序字段，O 切换排序方向，A 全选或清空，Tab 反选，R 刷新，Q/Esc 返回。Blog 中 N 上传草稿、P 发布、D 删除；Skill 中 I 安装、U 更新、D 卸载、M 管理来源。发布、删除和覆盖更新都有目标预览与默认取消的确认。Ctrl+C 会等待当前操作清理后退出。
+
+交互界面接管整屏和键盘，退出后恢复终端。下列完整命令及 `--json` 调用继续可用；非终端或 TERM=dumb 环境下，无参数入口显示帮助。
+
+完整子命令的列表、详情和结果继续由 Ink、React 和 Ink UI 渲染。命令模式的安装、更新与删除使用 Clack 交互及方块进度条，进度按实际目标目录计数，并显示当前处理的 Skill。交互页面使用持续重绘与可取消的加载提示。
+
+命令模式的 Clack 多选支持空格选择、`a` 全选或清空、`i` 反选，按 Enter 继续，按 Ctrl+C 取消。更新自动处理已记录的安装位置。设置 `NO_COLOR=1` 可关闭颜色；重定向输出时不播放进度动画。`--json` 的 stdout 始终只有一个结果，交互与进度写入 stderr。
 
 构建产物为自带依赖的 ESM 包，入口为 `dist/cli.js`，与 `dist/chunks/` 一起分发。源码未直接依赖 Chalk 或 Listr2。
 

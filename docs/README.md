@@ -9,6 +9,7 @@
 | 博客、设备授权与文章上传 | [远程博客管理规格](../.scratch/remote-blog-management/spec.md)                                 |
 | Skill 来源、安装与更新   | [Codeup 来源切换](../.scratch/codeup-skill-source/spec.md)，其余行为见 [Skill 管理规格](../.scratch/skill-management/spec.md) |
 | Skill 卸载               | [卸载规格](../.scratch/skill-uninstall/spec.md)，包括保留来源登记和终端多选                    |
+| 交互入口                 | [Mole 风格交互规格](../.scratch/mole-interactive/spec.md) |
 | CLI 展示                 | [样式设计](../.scratch/cli-style/design.md)、[UI 迁移记录](../.scratch/cli-style/migration.md) |
 
 规格与任务按[本地任务约定](agents/issue-tracker.md)保存在 `.scratch/`。验收记录保留当时的版本、命令及文件路径；当前路径以项目结构和源码为准。

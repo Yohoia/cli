@@ -65,6 +65,36 @@ export async function runProgram({
   registerSkills(program, context);
   registerConfig(program, context);
   registerBlog(program, context);
+  const launch = async (page?: "blog" | "skill") => {
+    const options = optionsSchema.parse(program.opts());
+    if (options.json)
+      throw new AppError({
+        code: "INVALID_ARGUMENT",
+        message: "JSON 调用请指定业务子命令；交互界面使用 yoho",
+        exitCode: 2,
+      });
+    if (
+      !process.stdin.isTTY ||
+      !process.stdout.isTTY ||
+      process.env.TERM === "dumb"
+    ) {
+      (page
+        ? program.commands.find((command) => command.name() === page)
+        : program
+      )?.outputHelp();
+      return;
+    }
+    const { interactive } = await import("./interactive/app.js");
+    await interactive(signal, {
+      ...(page ? { page } : {}),
+      ...(options.server ? { server: options.server } : {}),
+    });
+  };
+  program.action(() => launch());
+  for (const page of ["blog", "skill"] as const)
+    program.commands
+      .find((command) => command.name() === page)
+      ?.action(() => launch(page));
   try {
     await program.parseAsync(argv, { from: "user" });
   } catch (error) {

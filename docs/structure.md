@@ -11,6 +11,7 @@ src/
     commands/               auth、blog、config、skills 命令注册
       context.ts            命令共享选项与执行上下文类型
     views/                  auth、blog、skill 的终端展示
+    interactive/            Mole 风格菜单、列表、键盘与业务命令适配
     output.tsx              展示分发与文本渲染入口
     presentation.tsx        共享样式、布局与进度展示
     table.tsx               通用终端表格
