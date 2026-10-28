@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org/
+          package-manager-cache: false
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: npm-package
+          path: release
+      - name: Publish the validated tarball through npm OIDC
+        working-directory: release
+        env:
+          TARBALL: ${{ needs.validate.outputs.filename }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          DIST_TAG: ${{ needs.validate.outputs.dist-tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum --check SHA256SUMS
+          if npm view "@yohoia/cli@$VERSION" dist.integrity --json > registry.json; then
+            node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import { createHash } from 'node:crypto';
+          import assert from 'node:assert/strict';
+          const expected = 'sha512-' + createHash('sha512').update(readFileSync(process.env.TARBALL)).digest('base64');
+          assert.equal(JSON.parse(readFileSync('registry.json', 'utf8')), expected, 'Published version differs from the validated tarball; do not overwrite it');
+          console.log('Identical version already published; continuing with GitHub Release.');
+          NODE
+          else
+            node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import assert from 'node:assert/strict';
+          assert.equal(JSON.parse(readFileSync('registry.json', 'utf8')).error?.code, 'E404', 'Registry lookup failed; refusing to treat it as an unpublished version');
+          NODE
+            npm publish "$TARBALL" --access public --provenance --ignore-scripts --tag "$DIST_TAG"
+          fi
+
+  github-release:
+    needs: [validate, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: npm-package
+          path: release
+      - name: Attach the same package and checksum to GitHub Releases
+        working-directory: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          TARBALL: ${{ needs.validate.outputs.filename }}
+          DIST_TAG: ${{ needs.validate.outputs.dist-tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum --check SHA256SUMS
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "$TARBALL" SHA256SUMS --clobber
+          else
+            flags=()
+            if [[ "$DIST_TAG" == "next" ]]; then flags+=(--prerelease); fi
+            gh release create "$TAG" "$TARBALL" SHA256SUMS --verify-tag --generate-notes --title "$TAG" "${flags[@]}"
+          fi

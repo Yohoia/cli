@@ -2,6 +2,7 @@
 import { runProgram } from "../cli/program.js";
 import { renderText } from "../cli/output.js";
 import { normalizeError } from "../core/errors.js";
+import { DoctorError } from "../core/diagnostics.js";
 import { SkillOperationError } from "../skills/model.js";
 import { feedback } from "../cli/presentation.js";
 
@@ -31,6 +32,14 @@ async function main(): Promise<void> {
         `${JSON.stringify({ ok: false, error: { code: failure.code, message: failure.message }, ...(failure.data === undefined ? {} : { data: failure.data }) })}\n`,
       );
     else {
+      if (failure instanceof DoctorError)
+        process.stderr.write(
+          renderText(
+            { kind: "doctor", data: failure.report },
+            process.stderr.columns ?? 100,
+            process.stderr,
+          ),
+        );
       if (failure instanceof SkillOperationError)
         process.stderr.write(
           renderText(

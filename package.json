@@ -1,8 +1,27 @@
 {
-  "name": "yoho-cli",
-  "version": "0.7.1",
-  "private": true,
+  "name": "@yohoia/cli",
+  "version": "0.8.0",
   "description": "Manage PageHush articles and install, update, or remove Codeup Agent Skills",
+  "license": "MIT",
+  "author": "Yohoia",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Yohoia/cli.git"
+  },
+  "homepage": "https://github.com/Yohoia/cli#readme",
+  "bugs": {
+    "url": "https://github.com/Yohoia/cli/issues"
+  },
+  "keywords": [
+    "cli",
+    "pagehush",
+    "codeup",
+    "agent-skills"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
   "bin": {
     "yoho": "dist/cli.js"
@@ -11,7 +30,9 @@
     "dist",
     "README.md",
     "README.zh-CN.md",
-    "docs/assets"
+    "docs/assets",
+    "docs/distribution.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=24"
@@ -24,6 +45,8 @@
     "test": "pnpm build && node --test --test-concurrency=1 tests/cli/*.test.mjs tests/remote/*.test.mjs tests/skills/*.test.mjs",
     "test:file": "pnpm build && node --test --test-concurrency=1",
     "prepack": "pnpm build",
+    "release:pack": "node scripts/package-release.mjs",
+    "release:verify": "node scripts/smoke-package.mjs",
     "test:prepare": "node scripts/prepare-test-backend.mjs",
     "check:structure": "node scripts/check-structure.mjs"
   },

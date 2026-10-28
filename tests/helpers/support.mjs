@@ -11,10 +11,11 @@ let installation;
 async function installPackage() {
   const root = await mkdtemp(join(tmpdir(), "yoho-install-"));
   try {
+    const env = { ...process.env, npm_config_cache: join(root, "npm-cache") };
     const { stdout } = await execute(
       "npm",
       ["pack", "--ignore-scripts", "--json", "--pack-destination", root],
-      { cwd: resolve("."), maxBuffer: 4_000_000 },
+      { cwd: resolve("."), env, maxBuffer: 4_000_000 },
     );
     const [packed] = JSON.parse(stdout);
     const prefix = join(root, "installed");
@@ -30,7 +31,7 @@ async function installPackage() {
         "--no-fund",
         join(root, packed.filename),
       ],
-      { maxBuffer: 4_000_000 },
+      { env, maxBuffer: 4_000_000 },
     );
     return { root, bin: join(prefix, "node_modules", ".bin", "yoho") };
   } catch (error) {

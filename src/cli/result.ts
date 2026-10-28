@@ -1,9 +1,11 @@
 import type { z } from "zod";
+import type { DoctorReport } from "../core/diagnostics.js";
 import type { SkillResult } from "../skills/model.js";
 import type { authStatus, logout } from "../remote/auth.js";
 import type { performOperation, queryOperation } from "../remote/operations.js";
 import type { articleSchema, listSchema } from "../remote/model.js";
 export type CommandResult =
+  | { kind: "doctor"; data: DoctorReport }
   | { kind: "skills"; data: SkillResult }
   | { kind: "list"; data: z.infer<typeof listSchema> }
   | { kind: "show"; data: z.infer<typeof articleSchema> }

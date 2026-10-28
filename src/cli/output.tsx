@@ -4,8 +4,11 @@ import { Section, Metadata, renderUi } from "./presentation.js";
 import { SkillView } from "./views/skill-view.js";
 import { BlogView } from "./views/blog-view.js";
 import { AuthView } from "./views/auth-view.js";
+import { DoctorView } from "./views/doctor-view.js";
 function Output({ result, width }: { result: CommandResult; width: number }) {
   switch (result.kind) {
+    case "doctor":
+      return <DoctorView data={result.data} width={width} />;
     case "skills":
       return <SkillView data={result.data} width={width} />;
     case "list":

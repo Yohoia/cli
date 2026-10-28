@@ -13,7 +13,7 @@
 
 [![Node.js 24+](docs/assets/nodejs.svg)](https://nodejs.org/) [![pnpm 11](docs/assets/pnpm.svg)](https://pnpm.io/) [![TypeScript 7.0.2](docs/assets/typescript.svg)](https://www.typescriptlang.org/)
 
-[快速开始](#快速开始) · [终端界面](#终端界面) · [远程文章](#管理远程文章) · [Skill 管理](#安装更新和删除-skill) · [JSON 接口](#json-结果和退出码)
+[快速开始](#快速开始) · [终端界面](#终端界面) · [远程文章](#管理远程文章) · [Skill 管理](#安装更新和删除-skill) · [环境诊断](#环境诊断) · [JSON 接口](#json-结果和退出码)
 
 Yoho 是使用 TypeScript 编写的本地 CLI。用交互菜单完成日常操作，或用完整命令和 `--json` 接入脚本与本地产品。
 
@@ -38,32 +38,46 @@ PageHush 是文章的权威来源；本地 Markdown 是上传输入。Skill 更�
 
 ## 快速开始
 
-### 环境要求
+### 安装与升级
 
-- Node.js 24 或更高版本。
-- Skill 命令需要 Git、OpenSSH 及有 Codeup 仓库访问权限的 SSH 密钥。
-- 在本仓库构建时使用 pnpm 11.25.0。
-- 使用 `yoho blog` 和 `yoho auth` 前，需要一个兼容的 PageHush API。
-- 当前安装验收目标为 macOS；现有验收记录不覆盖 Linux 和 Windows 的安装。
+需要 **Node.js 24+**；Skill 功能还需要 Git、OpenSSH 和 Codeup SSH 访问权限。用户无需安装 pnpm 或克隆源码。当前完整安装验收目标为 macOS。
 
-`package.json` 将该包标记为私有包，目前没有发布到 npm。从仓库根目录通过本地 tarball 安装：
+```bash
+npm install --global @yohoia/cli@latest
+yoho --version
+yoho doctor
+yoho
+```
+
+再次执行安装命令即可升级。首次 npm 发布完成后上述命令才可用；发布前可使用下文源码构建方式。
+
+```bash
+# 临时运行，不全局安装
+npx --package=@yohoia/cli@latest yoho
+
+# 固定版本
+npm install --global @yohoia/cli@0.8.0
+
+# 卸载 CLI，保留配置和已安装 Skill
+npm uninstall --global @yohoia/cli
+```
+
+**旧包迁移：** 已安装 `yoho-cli` 时，先执行 `npm uninstall --global yoho-cli`，再安装 `@yohoia/cli`，避免同名 `yoho` 命令冲突。配置、系统凭据及 Skill 目录保持不变。
+
+没有全局目录写权限时，可以使用 `--prefix "$HOME/.local"`，并将 `$HOME/.local/bin` 加入 `PATH`。详见[分发与发布指南](docs/distribution.md)，包含用户前缀、Release 安装包、迁移和维护者发版步骤。
+
+<details>
+<summary>从源码构建安装包（开发者，pnpm 11.25.0）</summary>
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm check
-pnpm pack --pack-destination artifacts
-npm install --global ./artifacts/yoho-cli-0.7.1.tgz
-yoho --version
-yoho --help
+pnpm release:pack
+npm install --global ./artifacts/release/yohoia-cli-0.8.0.tgz
+yoho doctor
 ```
 
-如果系统级 npm 目录不可写，可以安装到用户目录：
-
-```bash
-npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.7.1.tgz
-```
-
-如果 `$HOME/.local/bin` 尚未加入 `PATH`，请先加入。
+</details>
 
 ### 第一条可运行命令
 
@@ -104,6 +118,15 @@ yoho blog list
 发布、删除和覆盖更新先预览目标，确认默认取消。Ctrl+C 等待操作清理后恢复终端。搜索中 Enter 应用、Ctrl+U 清空、Esc 清除搜索；命令模式的多选用 `a` 全选、`i` 反选。
 
 设置 `NO_COLOR=1` 关闭颜色。重定向输出不播放进度动画；非终端或 `TERM=dumb` 环境下，无参数入口显示帮助。
+
+## 环境诊断
+
+```bash
+yoho doctor
+yoho doctor --json
+```
+
+检查 Node.js、Git、OpenSSH、Codeup SSH 选择和 PageHush 服务地址配置。检查只读，不连接远程服务、不读取私钥或令牌内容、不写配置。通过时退出码为 0；缺少工具、明确指定的密钥不可读或服务配置无效时返回 2，并保留全部检查结果。待在线验证的权限只产生警告；实际 Codeup 权限仍需用 `yoho skill list` 验证。
 
 ## 配置 PageHush 服务
 
@@ -319,7 +342,7 @@ yoho skill uninstall --all --yes
 
 旧的本地文章模式已经移除。`--project`、路径型文章标识、`blog update`、MDX 创建和本地元数据编辑会返回迁移提示。请保留本地源文档，使用 `yoho blog create <path-to-md>` 上传新草稿；已有远程文章的正文和元数据请在 PageHush 中编辑。
 
-CLI 不提供已有文章正文、标题或元数据的编辑，不提供文章撤回、归档或恢复、永久删除、全局项目绑定或公开 npm 分发。Skill 也不支持版本回退或定时更新。CLI 与 PageHush API/网页版本需要保持兼容。
+CLI 不提供已有文章正文、标题或元数据的编辑，不提供文章撤回、归档或恢复、永久删除、全局项目绑定。Skill 也不支持版本回退或定时更新。CLI 与 PageHush API/网页版本需要保持兼容。
 
 ## 开发和验收
 
@@ -349,4 +372,4 @@ Skill 测试使用真实本机 Git 仓库、隔离 SSH 协议边界、可控来�
 
 ## 许可证
 
-当前仓库没有 `LICENSE` 文件，也没有在 package manifest 中声明许可证。发布或嵌入代码前，请先向项目所有者确认再分发。
+本项目采用 [MIT 许可证](LICENSE)。

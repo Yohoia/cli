@@ -13,7 +13,7 @@
 
 [![Node.js 24+](docs/assets/nodejs.svg)](https://nodejs.org/) [![pnpm 11](docs/assets/pnpm.svg)](https://pnpm.io/) [![TypeScript 7.0.2](docs/assets/typescript.svg)](https://www.typescriptlang.org/)
 
-[Quick start](#quick-start) · [Terminal interface](#terminal-interface) · [Articles](#manage-remote-articles) · [Skills](#install-update-and-remove-skills) · [JSON API](#json-results-and-exit-codes)
+[Quick start](#quick-start) · [Terminal interface](#terminal-interface) · [Articles](#manage-remote-articles) · [Skills](#install-update-and-remove-skills) · [Diagnostics](#environment-diagnostics) · [JSON API](#json-results-and-exit-codes)
 
 Yoho is a local TypeScript CLI. Use its interactive menu for everyday work, or explicit commands and `--json` for scripts and local products.
 
@@ -38,32 +38,46 @@ PageHush is the authoritative article store; local Markdown is an upload input. 
 
 ## Quick start
 
-### Requirements
+### Install and upgrade
 
-- Node.js 24 or newer.
-- Git and OpenSSH with a Codeup-authorized SSH key for Skill commands.
-- pnpm 11.25.0 when building this repository.
-- A compatible PageHush API for `yoho blog` and `yoho auth` commands.
-- macOS is the current installation-validation target. Linux and Windows installation are not covered by the current acceptance record.
+Requires **Node.js 24+**. Skill commands also need Git, OpenSSH and authorized Codeup SSH access. Users do not need pnpm or a source checkout. Full installation acceptance currently targets macOS.
 
-The package is marked private in `package.json` and is not published to npm. From the repository root, install the local package from a tarball:
+```bash
+npm install --global @yohoia/cli@latest
+yoho --version
+yoho doctor
+yoho
+```
+
+Run the same install command to upgrade. These npm commands become available after the first npm release; until then, use the source build below.
+
+```bash
+# Run temporarily without a global install
+npx --package=@yohoia/cli@latest yoho
+
+# Pin a version
+npm install --global @yohoia/cli@0.8.0
+
+# Remove the CLI while keeping configuration and installed Skills
+npm uninstall --global @yohoia/cli
+```
+
+**Migrating from the old package:** run `npm uninstall --global yoho-cli` before installing `@yohoia/cli`, because both provide the `yoho` command. Configuration, system credentials and Skill directories stay in place.
+
+If the global prefix is not writable, use `--prefix "$HOME/.local"` and add `$HOME/.local/bin` to `PATH`. See the [distribution and release guide](docs/distribution.md) for custom prefixes, Release tarballs, migration and maintainer setup.
+
+<details>
+<summary>Build an installation package from source (developers, pnpm 11.25.0)</summary>
 
 ```bash
 pnpm install --frozen-lockfile
 pnpm check
-pnpm pack --pack-destination artifacts
-npm install --global ./artifacts/yoho-cli-0.7.1.tgz
-yoho --version
-yoho --help
+pnpm release:pack
+npm install --global ./artifacts/release/yohoia-cli-0.8.0.tgz
+yoho doctor
 ```
 
-If the system-wide npm prefix is not writable, install into a user directory:
-
-```bash
-npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.7.1.tgz
-```
-
-Add `$HOME/.local/bin` to `PATH` if it is not already there.
+</details>
 
 ### First successful run
 
@@ -104,6 +118,15 @@ Run `yoho` to choose **Blog · Skill · Auth · Settings**. Run `yoho blog` or `
 Publishing, deletion, and overwrite updates preview their targets and default to cancel. Ctrl+C waits for cleanup and restores the terminal. During search, Enter applies, Ctrl+U clears, and Esc clears the search. Command-mode pickers use `a` to select all and `i` to invert.
 
 Set `NO_COLOR=1` to disable colors. Redirected output has no progress animation. Without a terminal, or with `TERM=dumb`, the bare entry point prints help.
+
+## Environment diagnostics
+
+```bash
+yoho doctor
+yoho doctor --json
+```
+
+Checks Node.js, Git, OpenSSH, Codeup SSH selection and PageHush service URL configuration. The checks are read-only: no remote requests, private-key or token contents, or configuration writes. A passing report exits with 0. Missing tools, an unreadable explicitly selected key or invalid service configuration exit with 2 and retain all check results. Unverified permissions produce warnings; use `yoho skill list` to verify actual Codeup access.
 
 ## Configure the PageHush service
 
@@ -322,7 +345,7 @@ Add `--json` to a business command to receive exactly one result on stdout for b
 
 The old local-article mode is removed. `--project`, path-based article IDs, `blog update`, MDX creation, and local metadata editing are rejected with a migration message. Keep local source documents and use `yoho blog create <path-to-md>` to upload a new draft; edit existing remote article content and metadata in PageHush.
 
-The CLI does not provide editing of an existing article body, title, or metadata, article withdrawal, article archive or restore, permanent deletion, global project binding, or public npm distribution. Skill version rollback and scheduled updates are also unavailable. The CLI and PageHush API/web version must remain compatible.
+The CLI does not provide editing of an existing article body, title, or metadata, article withdrawal, article archive or restore, permanent deletion, or global project binding. Skill version rollback and scheduled updates are also unavailable. The CLI and PageHush API/web version must remain compatible.
 
 ## Development and validation
 
@@ -352,4 +375,4 @@ Project documentation: [current specs and architecture decisions](docs/README.md
 
 ## License
 
-This repository currently has no `LICENSE` file or declared package license. Confirm redistribution terms with the project owner before publishing or embedding the code.
+Licensed under the [MIT License](LICENSE).

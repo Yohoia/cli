@@ -1,0 +1,59 @@
+name: Validate package
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+    outputs:
+      filename:
+        value: ${{ jobs.validate.outputs.filename }}
+      version:
+        value: ${{ jobs.validate.outputs.version }}
+      dist-tag:
+        value: ${{ jobs.validate.outputs.dist-tag }}
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: macos-latest
+    timeout-minutes: 35
+    outputs:
+      filename: ${{ steps.package.outputs.filename }}
+      version: ${{ steps.package.outputs.version }}
+      dist-tag: ${{ steps.package.outputs.dist-tag }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Check release metadata and tag before building
+        run: node scripts/package-release.mjs --check
+      - uses: pnpm/action-setup@v6.1.0
+        with:
+          version: 11.25.0
+          run_install: false
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - run: pnpm format:check
+      - run: pnpm test:prepare
+      - run: pnpm test
+      - id: package
+        run: pnpm release:pack
+      - name: Verify installed package and upgrade paths
+        env:
+          TARBALL: ${{ steps.package.outputs.filename }}
+        run: pnpm release:verify "artifacts/release/$TARBALL"
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: npm-package
+          path: |
+            artifacts/release/${{ steps.package.outputs.filename }}
+            artifacts/release/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14

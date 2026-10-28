@@ -7,6 +7,7 @@ import { RemoteClient } from "../remote/http.js";
 import { registerAuth } from "./commands/auth.js";
 import { registerBlog } from "./commands/blog.js";
 import { registerConfig } from "./commands/config.js";
+import { registerDoctor } from "./commands/doctor.js";
 import { registerSkills } from "./commands/skills.js";
 import { optionsSchema, type CommandContext } from "./commands/context.js";
 import type { CommandResult } from "./result.js";
@@ -64,6 +65,7 @@ export async function runProgram({
   registerAuth(program, context);
   registerSkills(program, context);
   registerConfig(program, context);
+  registerDoctor(program, context);
   registerBlog(program, context);
   const launch = async (page?: "blog" | "skill") => {
     const options = optionsSchema.parse(program.opts());

@@ -8,14 +8,14 @@ src/
   cli/
     program.ts              根命令装配与参数解析
     result.ts               命令结果类型
-    commands/               auth、blog、config、skills 命令注册
+    commands/               auth、blog、config、doctor、skills 命令注册
       context.ts            命令共享选项与执行上下文类型
     views/                  auth、blog、skill 的终端展示
     interactive/            Mole 风格菜单、列表、键盘与业务命令适配
     output.tsx              展示分发与文本渲染入口
     presentation.tsx        共享样式、布局与进度展示
     table.tsx               通用终端表格
-  core/                     公共错误、配置路径与进度协议
+  core/                     公共错误、配置路径、环境诊断与进度协议
   remote/                   PageHush 客户端、授权、文章上传与操作恢复
   skills/                   来源、安装、发现、更新、卸载与状态存储
     manifest.ts             SKILL.md 元数据解析
@@ -28,7 +28,8 @@ tests/
   remote/                   远程博客、授权及测试后端校验
   skills/                   Skill 功能与恢复测试
   helpers/                  安装包运行器、隔离服务、PTY 与固定后端清单
-scripts/                    构建、测试后端准备与结构检查
+scripts/                    构建、测试后端准备、结构检查与发布包验证
+.github/workflows/          macOS 验收、npm OIDC 与 GitHub Releases 发布
 docs/                       当前文档入口、项目结构、ADR 与历史资料
 .scratch/                   按功能保存的规格、任务及验收记录
 patches/                    依赖补丁及其说明
