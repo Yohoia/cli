@@ -1,17 +1,40 @@
+<p align="center">
+  <picture>
+    <source media="(max-width: 600px)" srcset="docs/assets/readme-hero-zh-mobile.svg">
+    <img src="docs/assets/readme-hero-zh.svg" width="100%" alt="Yoho CLI：在终端管理 PageHush 远程文章与 Codeup Agent Skill">
+  </picture>
+</p>
+
 # Yoho CLI
 
-一个使用 TypeScript 编写的本地 CLI，用于管理 PageHush 远程文章和 Codeup Agent Skill。
+**在一个终端里，管理远程文章和 Agent Skill。**
 
-[English](README.md)
+[English](README.md) · **简体中文**
 
 [![Node.js 24+](docs/assets/nodejs.svg)](https://nodejs.org/) [![pnpm 11](docs/assets/pnpm.svg)](https://pnpm.io/) [![TypeScript 7.0.2](docs/assets/typescript.svg)](https://www.typescriptlang.org/)
 
-Yoho 为终端用户或本地产品提供一套确定性的命令接口，处理两类工作：
+[快速开始](#快速开始) · [终端界面](#终端界面) · [远程文章](#管理远程文章) · [Skill 管理](#安装更新和删除-skill) · [JSON 接口](#json-结果和退出码)
 
-- `yoho blog` 通过 PageHush API 读取和写入文章。
-- `yoho skill` 发现 Codeup Skill 来源，并将完整 Skill 目录安装或更新到项目级、用户级目标目录。
+Yoho 是使用 TypeScript 编写的本地 CLI。用交互菜单完成日常操作，或用完整命令和 `--json` 接入脚本与本地产品。
 
-调用方可以为业务命令添加 `--json`，获得稳定的结构化结果。PageHush 是文章的权威来源：CLI 不扫描本地博客目录，不修改本地文章文件，也不提供双向同步。
+```bash
+# 交互入口
+yoho
+
+# 读取 PageHush 文章；首次使用需先 yoho auth login
+yoho blog list
+
+# 从 Codeup 安装 Skill 到当前项目
+yoho skill install speckit --target codex
+```
+
+| 你要做的事         | Yoho 提供的能力                                          |
+| ------------------ | -------------------------------------------------------- |
+| 管理 PageHush 文章 | 上传 Markdown 和行内图片、查看文章、按版本发布与软删除   |
+| 管理 Codeup Skill  | 发现来源，安装到 Codex、Claude 或 Agents，更新与离线卸载 |
+| 接入脚本与本地产品 | 成功与失败均向 stdout 输出单个 JSON 结果，退出码区分错误 |
+
+PageHush 是文章的权威来源；本地 Markdown 是上传输入。Skill 更新以登记的来源为准，逐目标处理失败恢复。
 
 ## 快速开始
 
@@ -44,7 +67,7 @@ npm install --global --prefix "$HOME/.local" ./artifacts/yoho-cli-0.7.1.tgz
 
 ### 第一条可运行命令
 
-Skill 管理不需要 PageHush 登录。先查看已登记的 Codeup 来源及其 Skill：
+Skill 管理只需要 Codeup SSH 访问，不需要 PageHush 登录：
 
 ```bash
 yoho skill list
@@ -65,28 +88,22 @@ yoho blog list
 
 ## 终端界面
 
-直接输入 `yoho` 打开 Mole 风格主菜单，在 Blog、Skill、Auth 和 Settings 之间选择。也可以用 `yoho blog` 或 `yoho skill` 直接进入列表。
+输入 `yoho`，在 **Blog · Skill · Auth · Settings** 之间选择；`yoho blog` 和 `yoho skill` 可直接打开对应列表。
 
-方向键或 J/K 移动，空格多选，Enter 打开详情，`/` 即时搜索，H/L 翻页，S 切换排序字段，O 切换排序方向，A 全选或清空，Tab 反选，R 刷新，Q/Esc 返回。Blog 中 N 上传草稿、P 发布、D 删除；Skill 中 I 安装、U 更新、D 卸载、M 管理来源。发布、删除和覆盖更新都有目标预览与默认取消的确认。Ctrl+C 会等待当前操作清理后退出。
+![Yoho CLI 0.7.1 的实际终端主菜单，包含 Blog、Skill、Auth、Settings 及键盘提示](docs/assets/terminal-menu.png)
 
-搜索使用与 Mole 一致的黄色顶部 `/ Search:` 输入，显示匹配数量；Enter 应用、Backspace 退格、Ctrl+U 清空，Esc 清除搜索。底部快捷键统一使用 Mole 的 ANSI 256 色 244 灰色。
+| 操作                            | 按键                         |
+| ------------------------------- | ---------------------------- |
+| 移动 / 打开 / 返回              | 方向键或 J/K · Enter · Q/Esc |
+| 选择 / 全选 / 反选              | Space · A · Tab              |
+| 搜索 / 翻页 / 刷新              | `/` · H/L · R                |
+| 排序字段 / 排序方向             | S · O                        |
+| 文章上传 / 发布 / 删除          | N · P · D                    |
+| Skill 安装 / 更新 / 卸载 / 来源 | I · U · D · M                |
 
-交互界面接管整屏和键盘，退出后恢复终端。下列完整命令及 `--json` 调用继续可用；非终端或 TERM=dumb 环境下，无参数入口显示帮助。
+发布、删除和覆盖更新先预览目标，确认默认取消。Ctrl+C 等待操作清理后恢复终端。搜索中 Enter 应用、Ctrl+U 清空、Esc 清除搜索；命令模式的多选用 `a` 全选、`i` 反选。
 
-完整子命令的列表、详情和结果继续由 Ink、React 和 Ink UI 渲染。命令模式的安装、更新与删除使用 Clack 交互及方块进度条，进度按实际目标目录计数，并显示当前处理的 Skill。交互页面使用持续重绘与可取消的加载提示。
-
-命令模式的 Clack 多选支持空格选择、`a` 全选或清空、`i` 反选，按 Enter 继续，按 Ctrl+C 取消。更新自动处理已记录的安装位置。设置 `NO_COLOR=1` 可关闭颜色；重定向输出时不播放进度动画。`--json` 的 stdout 始终只有一个结果，交互与进度写入 stderr。
-
-构建产物为自带依赖的 ESM 包，入口为 `dist/cli.js`，与 `dist/chunks/` 一起分发。源码未直接依赖 Chalk 或 Listr2。
-
-## 命令如何协作
-
-| 命令组        | 权威来源                           | 主要结果                             |
-| ------------- | ---------------------------------- | ------------------------------------ |
-| `yoho blog`   | PageHush 远程文章 API              | 文章、版本、发布/删除操作及恢复记录  |
-| `yoho skill`  | 已登记的 Codeup 仓库和本地目标目录 | Skill 目录、安装状态及逐目标更新结果 |
-| `yoho auth`   | PageHush 设备授权                  | 按服务隔离、保存于系统凭据存储的令牌 |
-| `yoho --json` | 同一次命令执行                     | stdout 上的机器可读成功或失败结果    |
+设置 `NO_COLOR=1` 关闭颜色。重定向输出不播放进度动画；非终端或 `TERM=dumb` 环境下，无参数入口显示帮助。
 
 ## 配置 PageHush 服务
 
@@ -207,6 +224,9 @@ yoho skill install
 yoho skill update
 ```
 
+<details>
+<summary>列表状态与版本显示</summary>
+
 选择界面使用紧凑列表与焦点详情：方向键移动，Space 勾选，`a` 全选或清空，`i` 反选，Enter 确认，Ctrl+C 取消。列表较长时自动滚动，完成的步骤收起为摘要。
 
 `yoho skill list` 使用英文表头，安装状态为绿色 `installed` 或浅灰色 `not installed`。列表省略段落标题，底部显示 `Total: 3 · 1 installed · 2 not installed` 形式的数量统计。版本来自根 `SKILL.md` 的 YAML 元数据，支持 `metadata.version`：
@@ -217,6 +237,8 @@ metadata:
 ```
 
 也兼容顶层的 `version: "0.1.1"`，两处同时声明时以顶层为准。终端统一显示为 `v0.1.1`；缺少版本时显示“未标注”。已安装项显示本机版本，未安装项显示仓库版本。指定 `--target` 时还会展示对应安装位置。
+
+</details>
 
 CLI 仅管理已登记来源及已有安装记录对应的 Skill。手动复制的 Skill 按根 `SKILL.md` 名称匹配登记来源；无匹配且无记录的第三方 Skill 不进入更新菜单、`--all` 结果或安装记录。来源被移除的历史安装仍保留恢复提示。
 
@@ -271,8 +293,6 @@ yoho skill uninstall --all --yes
 
 ## JSON 结果和退出码
 
-普通输出采用接近 Codex CLI 的简洁风格：内容统一左对齐，列表使用英文居中表头与对齐列，省略段落标题，使用列分隔线并省去外框。无更新时直接显示一行成功提示。正文和辅助文字沿用终端前景色，强调色用于焦点与状态，支持 `NO_COLOR`，重定向时不输出颜色。完整 ID、版本和路径保留换行；查询进度、选择菜单、详情、错误及操作结果使用同一套视觉规则。JSON 保留来源可用性状态和完整说明，另提供声明版本及各目标的安装版本；普通列表的安装状态不替换 JSON 中的来源状态。
-
 为业务命令添加 `--json` 后，成功和失败都会向 stdout 输出一个结果，每次调用只有一个 JSON 结果。进度、批准网址和导入提示写入 stderr，便于本地产品和脚本稳定读取结果。
 
 ```json
@@ -313,13 +333,6 @@ pnpm test
 
 测试先构建并安装 CLI，再通过子进程验收。远程测试使用隔离数据库、凭据和素材存储。后端版本由 `tests/helpers/pagehush-backend.json` 固定，包括 Git 提交、依赖锁文件摘要、测试入口及构建产物；不直接运行相邻仓库的任意工作区。
 
-首次运行完整测试前准备后端：
-
-```bash
-pnpm test:prepare
-pnpm test
-```
-
 如果本机已有 PageHush Git 仓库，可以用它提供固定提交；该命令在 `.cache/test-backends/` 创建独立检出，不使用或修改其未提交文件：
 
 ```bash
@@ -331,6 +344,8 @@ pnpm test:prepare --source /path/to/PageHush --offline
 准备脚本使用 `npm ci` 安装锁定依赖并构建共享包，可重复运行。测试启动检查后端提交、工作树、锁文件及必要产物。`PAGEHUSH_SOURCE` 仍可指向其他已准备的干净检出，但必须匹配固定版本；不匹配会明确失败。
 
 Skill 测试使用真实本机 Git 仓库、隔离 SSH 协议边界、可控来源故障、临时目录、Python 3 和系统 `tar` 命令。测试不会读取真实 SSH 凭据，也不会修改真实 Skill 目录。
+
+更多项目资料：[当前规格与架构决策](docs/README.md) · [目录结构](docs/structure.md) · [领域术语](GLOSSARY.md)。
 
 ## 许可证
 

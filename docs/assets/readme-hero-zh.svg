@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="440" viewBox="0 0 1200 440" role="img" aria-labelledby="title desc">
+  <title id="title">Yoho CLI：管理 PageHush 文章和 Codeup Agent Skill</title>
+  <desc id="desc">实际命令示例：yoho blog list 读取远程文章；yoho skill install speckit --target codex 安装 Skill。</desc>
+  <rect width="1200" height="440" rx="16" fill="#171d24"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif">
+    <g id="identity" transform="translate(56 50)">
+      <path d="M0 12 20 28 0 44" fill="none" stroke="#82c995" stroke-width="7" stroke-linecap="square"/>
+      <path d="M32 44H52" stroke="#82c995" stroke-width="7"/>
+      <text x="76" y="56" fill="#f1f5f3" font-size="80" font-weight="750" letter-spacing="-3">Yoho CLI</text>
+      <text x="0" y="118" fill="#aebac2" font-size="32">文章与 Skill，终端里一站管理。</text>
+    </g>
+    <g id="command-examples" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="30">
+      <path d="M56 220H1144" stroke="#35434c" stroke-width="1.5"/>
+      <text x="56" y="277" fill="#82c995">$</text>
+      <text x="92" y="277" fill="#f1f5f3">yoho blog list</text>
+      <text x="1144" y="277" text-anchor="end" fill="#84d4db" font-size="24">PageHush</text>
+      <path d="M56 309H1144" stroke="#35434c" stroke-width="1.5"/>
+      <text x="56" y="367" fill="#82c995">$</text>
+      <text x="92" y="367" fill="#f1f5f3">yoho skill install speckit --target codex</text>
+      <text x="1144" y="414" text-anchor="end" fill="#84d4db" font-size="24">Codeup → Codex / Claude / Agents</text>
+    </g>
+  </g>
+</svg>

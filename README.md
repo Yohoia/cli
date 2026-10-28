@@ -1,17 +1,40 @@
+<p align="center">
+  <picture>
+    <source media="(max-width: 600px)" srcset="docs/assets/readme-hero-mobile.svg">
+    <img src="docs/assets/readme-hero.svg" width="100%" alt="Yoho CLI: manage PageHush remote articles and Codeup Agent Skills from your terminal">
+  </picture>
+</p>
+
 # Yoho CLI
 
-A local TypeScript CLI for managing PageHush remote articles and Codeup Agent Skills.
+**Manage remote articles and Agent Skills from one terminal.**
 
-[简体中文](README.zh-CN.md)
+**English** · [简体中文](README.zh-CN.md)
 
 [![Node.js 24+](docs/assets/nodejs.svg)](https://nodejs.org/) [![pnpm 11](docs/assets/pnpm.svg)](https://pnpm.io/) [![TypeScript 7.0.2](docs/assets/typescript.svg)](https://www.typescriptlang.org/)
 
-Yoho gives a terminal or local product one deterministic interface for two jobs:
+[Quick start](#quick-start) · [Terminal interface](#terminal-interface) · [Articles](#manage-remote-articles) · [Skills](#install-update-and-remove-skills) · [JSON API](#json-results-and-exit-codes)
 
-- `yoho blog` reads and writes articles through the PageHush API.
-- `yoho skill` discovers Codeup Skill sources and installs or updates complete Skill directories.
+Yoho is a local TypeScript CLI. Use its interactive menu for everyday work, or explicit commands and `--json` for scripts and local products.
 
-Use `--json` when another program needs a stable result. PageHush is the authoritative article store: this CLI does not scan local blog folders, edit local article files, or provide bidirectional synchronization.
+```bash
+# Open the interactive menu
+yoho
+
+# Read PageHush articles; run yoho auth login before first use
+yoho blog list
+
+# Install a Codeup Skill into the current project
+yoho skill install speckit --target codex
+```
+
+| Your task                                 | What Yoho provides                                                                                |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Manage PageHush articles                  | Upload Markdown and inline images, inspect articles, publish and soft-delete with revision checks |
+| Manage Codeup Skills                      | Discover sources, install into Codex, Claude or Agents, update and uninstall offline              |
+| Integrate with scripts and local products | One JSON result on stdout for success or failure, with distinct exit codes                        |
+
+PageHush is the authoritative article store; local Markdown is an upload input. Skill updates follow the registered source and recover failures per target.
 
 ## Quick start
 
@@ -44,7 +67,7 @@ Add `$HOME/.local/bin` to `PATH` if it is not already there.
 
 ### First successful run
 
-Skill management does not require PageHush login. List the registered Codeup sources and the Skills they expose:
+Skill management needs Codeup SSH access, without a PageHush login:
 
 ```bash
 yoho skill list
@@ -65,26 +88,22 @@ yoho blog list
 
 ## Terminal interface
 
-Run `yoho` to open the Mole-style menu with Blog, Skill, Auth, and Settings. Use `yoho blog` or `yoho skill` to enter a list directly. Arrow keys or J/K move, Space selects, Enter opens details, `/` searches as you type, H/L change pages, S/O change sorting, A selects all, Tab inverts, R refreshes, and Q/Esc returns. Blog offers N to upload, P to publish, and D to delete; Skills offers I to install, U to update, D to uninstall, and M to manage sources. Destructive operations preview their targets and default to cancel. Ctrl+C waits for operation cleanup and restores the terminal.
+Run `yoho` to choose **Blog · Skill · Auth · Settings**. Run `yoho blog` or `yoho skill` to open a list directly.
 
-Search uses Mole’s yellow `/ Search:` header and matching counts. Enter applies, Backspace edits, Ctrl+U clears the query, and Esc clears the search. All shortcut bars use Mole’s ANSI 256-color gray 244.
+![Actual Yoho CLI 0.7.1 terminal menu with Blog, Skill, Auth, Settings and keyboard controls](docs/assets/terminal-menu.png)
 
-Existing complete commands and JSON calls remain available. Without a terminal, or with TERM=dumb, the bare entry point prints help.
+| Action                                        | Keys                          |
+| --------------------------------------------- | ----------------------------- |
+| Move / open / back                            | Arrows or J/K · Enter · Q/Esc |
+| Select / select all / invert                  | Space · A · Tab               |
+| Search / page / refresh                       | `/` · H/L · R                 |
+| Sort field / direction                        | S · O                         |
+| Upload / publish / delete articles            | N · P · D                     |
+| Install / update / uninstall Skills / sources | I · U · D · M                 |
 
-Complete subcommands continue to use Ink, React, and Ink UI for lists, details, and results, with Clack menus and block progress bars for installation, updates, and removal. Progress counts actual destination directories. The interactive shell continuously redraws its pages and provides cancellable loading indicators.
+Publishing, deletion, and overwrite updates preview their targets and default to cancel. Ctrl+C waits for cleanup and restores the terminal. During search, Enter applies, Ctrl+U clears, and Esc clears the search. Command-mode pickers use `a` to select all and `i` to invert.
 
-In command-mode Clack menus, use Space to select, `a` to select or clear all, and `i` to invert a selection. Press Enter to continue or Ctrl+C to cancel. Updates use recorded installation locations. Set `NO_COLOR=1` to disable colors. Redirected output has no progress animation. With `--json`, stdout contains one result; interaction and progress use stderr.
-
-The build bundles dependencies into ESM with `dist/cli.js` as its entry and additional files in `dist/chunks/`. The source has no direct Chalk or Listr2 dependency.
-
-## How the CLI fits together
-
-| Command group | Source of truth                                              | Main result                                                          |
-| ------------- | ------------------------------------------------------------ | -------------------------------------------------------------------- |
-| `yoho blog`   | PageHush remote article API                                  | Articles, revisions, publish/delete operations, and recovery records |
-| `yoho skill`  | Registered Codeup repositories plus local target directories | Skill catalog, installation state, and per-target update results     |
-| `yoho auth`   | PageHush device authorization                                | A service-scoped token stored in the system credential store         |
-| `yoho --json` | The same command execution                                   | Machine-readable success or failure on stdout                        |
+Set `NO_COLOR=1` to disable colors. Redirected output has no progress animation. Without a terminal, or with `TERM=dumb`, the bare entry point prints help.
 
 ## Configure the PageHush service
 
@@ -205,6 +224,9 @@ yoho skill install
 yoho skill update
 ```
 
+<details>
+<summary>List states and version labels</summary>
+
 The picker uses a compact list with details for the focused item. Use arrow keys to move, Space to toggle, `a` to select or clear all enabled items, `i` to invert, Enter to confirm, and Ctrl+C to cancel. Long lists scroll, and completed steps collapse to a summary.
 
 `yoho skill list` uses English column headings and displays green `installed` or light-gray `not installed` states. Lists omit section titles and show a footer such as `Total: 3 · 1 installed · 2 not installed`. Versions come from YAML metadata in the root `SKILL.md`, including `metadata.version`:
@@ -215,6 +237,8 @@ metadata:
 ```
 
 Top-level `version: "0.1.1"` is also supported and takes precedence when both fields exist. The terminal displays `v0.1.1`, or 未标注 when no version is declared. Installed rows show local versions; other rows show repository versions. Use `--target` to include installation paths.
+
+</details>
 
 The CLI manages only Skills linked to registered sources or existing installation records. Manually copied Skills match registered names from root `SKILL.md` files. Unrelated third-party Skills without a match or record do not appear in the update menu, update-all results, or installation records. Previously managed installations retain recovery guidance when their source is removed.
 
@@ -269,8 +293,6 @@ Noninteractive calls require `--yes` or `--dry-run`. Providing both still only p
 
 ## JSON results and exit codes
 
-Human-readable output follows a compact terminal style inspired by Codex CLI. Content shares a left edge. Lists omit section titles and use centered English column headings with aligned columns and separator lines instead of outer borders. An up-to-date result uses one success line. Body text and notes use the terminal foreground color; focus and status use restrained accents. Full IDs, revisions, and paths wrap without truncation. Progress, pickers, details, errors, and operation results share these rules. `NO_COLOR` is supported, and redirected output has no color codes. JSON preserves source availability and full descriptions, with added declared versions and installed target versions. Human-readable installation states do not replace the source states in JSON.
-
 Add `--json` to a business command to receive exactly one result on stdout for both success and failure. Progress, approval URLs, and import notices go to stderr. This keeps the result stream safe for local products and shell scripts.
 
 ```json
@@ -314,13 +336,6 @@ pnpm test
 
 The suite builds and exercises the installed CLI in child processes. Remote tests use isolated databases, credentials, and storage. `tests/helpers/pagehush-backend.json` pins the backend Git revision, lockfile digest, fixture entry, and required build outputs.
 
-Prepare the backend before the first full run:
-
-```bash
-pnpm test:prepare
-pnpm test
-```
-
 An existing local repository can supply the pinned Git objects. Preparation creates a separate checkout in `.cache/test-backends/`, without using or modifying uncommitted files:
 
 ```bash
@@ -332,6 +347,8 @@ pnpm test:prepare --source /path/to/PageHush --offline
 Preparation installs locked dependencies with `npm ci` and builds the shared package. It can be rerun. Test startup checks the revision, clean worktree, lockfile, and required artifacts. `PAGEHUSH_SOURCE` can point to another prepared checkout, but it must match the pinned revision and pass those checks.
 
 Skill tests use real local Git repositories, an isolated SSH transport boundary, controlled source faults, temporary directories, Python 3, and the system `tar` command. They do not read real SSH credentials or modify real Skill directories.
+
+Project documentation: [current specs and architecture decisions](docs/README.md) · [repository structure](docs/structure.md) · [domain glossary](GLOSSARY.md).
 
 ## License
 
