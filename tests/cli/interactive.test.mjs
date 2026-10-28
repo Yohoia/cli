@@ -90,7 +90,7 @@ test("the interactive Skill page installs and uninstalls through the real comman
 test("Skill search clears hidden selections, and source management remains offline and keyboard accessible", async (t) => {
   const f = await skillFixture(t);
   const result = await terminal(
-    f.options,
+    { ...f.options, env: { ...f.options.env, NO_COLOR: undefined } },
     ["skill"],
     [
       { wait: "0/3 selected", keys: " /" },
@@ -98,7 +98,7 @@ test("Skill search clears hidden selections, and source management remains offli
       { wait: "(1/3; 0 selected)", keys: "\r" },
       { wait: "Status:", keys: "q" },
       { wait: "(1/3; 0 selected)", keys: "m" },
-      { wait: "Skill Sources  ", keys: "n" },
+      { wait: "N Add", keys: "n" },
       { wait: "Add Source", keys: "team/new-skill\r" },
       { wait: "registered  team/new-skill", keys: "\r" },
       { wait: "0/4 selected", keys: "q" },
