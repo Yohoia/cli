@@ -136,6 +136,7 @@ export async function skillFixture(t) {
     const r = repos.get(id);
     if (r) res.once("finish", () => r.onResponse?.(res.statusCode));
     if (r?.delay) await new Promise((done) => setTimeout(done, r.delay));
+    if (r?.beforeResponse) await r.beforeResponse();
     if (res.destroyed) return;
     if (
       !r ||

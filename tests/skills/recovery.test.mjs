@@ -53,13 +53,15 @@ test("killed update leaves recoverable owner locks and concurrent retries cannot
       writeFile(join(path, `local-${i}`), "local"),
     ),
   );
+  // Source reads can exceed one second on hosted runners.
+  for (const repo of f.repos.values()) repo.delay = 600;
   const pending = await startCli(
     ["skill", "update", "--all", "--target", "agents", "--json"],
     f.options,
   );
   const lock = join(f.project, ".agents/skills/.yoho-lock-speckit");
   let locked = false;
-  for (let i = 0; i < 200; i++) {
+  for (const deadline = Date.now() + 8000; Date.now() < deadline;) {
     try {
       const owner = JSON.parse(
         await readFile(join(lock, "owner.json"), "utf8"),
@@ -69,16 +71,50 @@ test("killed update leaves recoverable owner locks and concurrent retries cannot
         break;
       }
     } catch {}
-    await new Promise((done) => setTimeout(done, 5));
+    if (pending.child.exitCode !== null || pending.child.signalCode !== null)
+      break;
+    await new Promise((done) => setTimeout(done, 10));
   }
-  assert.ok(locked, "update must acquire target lock");
   pending.child.kill("SIGKILL");
-  await pending.result;
-  for (const repo of f.repos.values()) repo.delay = 60;
-  const results = await Promise.all([
-    runCli(["skill", "list", "--json"], f.options),
-    runCli(["skill", "list", "--json"], f.options),
-  ]);
+  const stopped = await pending.result;
+  assert.ok(
+    locked,
+    `update must acquire target lock: ${stopped.stdout} ${stopped.stderr}`,
+  );
+  for (const repo of f.repos.values()) repo.delay = 0;
+  let entered;
+  let release;
+  const reading = new Promise((done) => {
+    entered = done;
+  });
+  const hold = new Promise((done) => {
+    release = done;
+  });
+  const source = f.repos.get("69aa892db28d0aba0f5ed47e/yoho-speckit");
+  source.beforeResponse = () => {
+    entered();
+    return hold;
+  };
+  const first = await startCli(["skill", "list", "--json"], f.options);
+  let firstResult;
+  let secondResult;
+  try {
+    await Promise.race([
+      reading,
+      first.result.then((result) => {
+        throw new Error(
+          `list exited before reading its source: ${JSON.stringify(result)}`,
+        );
+      }),
+    ]);
+    // Keep the first process inside the global lock until the second exits.
+    secondResult = await runCli(["skill", "list", "--json"], f.options);
+  } finally {
+    release();
+    delete source.beforeResponse;
+    firstResult = await first.result;
+  }
+  const results = [firstResult, secondResult];
   assert.deepEqual(
     results.map((x) => x.code).sort((a, b) => a - b),
     [0, 5],
