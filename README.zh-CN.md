@@ -56,7 +56,7 @@ yoho
 npx --registry=https://registry.npmjs.org/ --package=@yohoia/cli@latest yoho
 
 # 固定版本
-npm install --global @yohoia/cli@0.8.1 --registry=https://registry.npmjs.org/
+npm install --global @yohoia/cli@0.8.2 --registry=https://registry.npmjs.org/
 
 # 卸载 CLI，保留配置和已安装 Skill
 npm uninstall --global @yohoia/cli
@@ -73,7 +73,7 @@ npm uninstall --global @yohoia/cli
 pnpm install --frozen-lockfile
 pnpm check
 pnpm release:pack
-npm install --global ./artifacts/release/yohoia-cli-0.8.1.tgz
+npm install --global ./artifacts/release/yohoia-cli-0.8.2.tgz
 yoho doctor
 ```
 
@@ -261,6 +261,8 @@ metadata:
 
 也兼容顶层的 `version: "0.1.1"`，两处同时声明时以顶层为准。终端统一显示为 `v0.1.1`；缺少版本时显示“未标注”。已安装项显示本机版本，未安装项显示仓库版本。指定 `--target` 时还会展示对应安装位置。
 
+来源发布较新版本时，已安装项会显示黄色 `↑ 有更新` 和 `v0.1.1 → v0.1.2`。交互 Skill 页面显示更新数量与绿色 `U Update`，选中 Skill 后按 `U` 预览并确认；普通命令提示运行 `yoho skill update`。查看列表不会修改已安装文件。未声明版本的受管安装按记录的来源提交判断；来源不可用或手动安装来源有歧义时，更新状态保持未确认。JSON 安装目标提供 `updateStatus`（`available`、`current`、`unknown`），有更新时附带 `updateReason`（`version`、`commit`）。该状态表示来源是否有升级，实际更新命令还会检查本地文件改动。
+
 </details>
 
 CLI 仅管理已登记来源及已有安装记录对应的 Skill。手动复制的 Skill 按根 `SKILL.md` 名称匹配登记来源；无匹配且无记录的第三方 Skill 不进入更新菜单、`--all` 结果或安装记录。来源被移除的历史安装仍保留恢复提示。
@@ -283,7 +285,7 @@ yoho skill update speckit yoho-retro-poster --target claude --json
 yoho skill update --all --scope user --target agents --target codex --json
 ```
 
-更新时显式提供 `--scope`、`--target` 或 `--project-path` 可以收窄到指定位置；不提供这些选项则自动使用已有安装位置，不扫描其他项目寻找未记录的安装，也不补装缺失目标。版本号用于展示，更新内容仍固定为默认分支最新提交，不按版本号排序或选择历史版本。
+更新时显式提供 `--scope`、`--target` 或 `--project-path` 可以收窄到指定位置；不提供这些选项则自动使用已有安装位置，不扫描其他项目寻找未记录的安装，也不补装缺失目标。声明版本用于识别可用升级，更新内容仍固定为默认分支最新提交，不选择历史版本。
 
 安装会保护已有目标目录，只补齐缺失目标。每次操作按来源获取默认分支最新提交，同一来源只下载一次；复制完整 Skill 树但排除 Git 元数据，也不会运行 Skill 脚本或安装 npm/pip 依赖。更新以仓库为准：覆盖本地修改、恢复仓库中被删除的文件，并删除仓库没有的本地文件。更新失败时恢复受影响的目标并继续处理其他目标；首次批量安装失败时回滚本批新增内容，同时保留原有安装。
 

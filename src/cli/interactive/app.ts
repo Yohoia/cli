@@ -335,25 +335,37 @@ class InteractiveApp {
       rows = (data.items as CatalogItem[]).map((skill) => {
         const installed =
           skill.targets?.filter((target) => target.installed) ?? [];
-        const version = installed.length
+        const available = installed.filter(
+          (target) => target.updateStatus === "available",
+        );
+        const current = installed.length
           ? [
               ...new Set(
                 installed.map((target) => countVersion(target.version)),
               ),
             ].join(" / ")
           : countVersion(skill.version);
+        const version = available.some(
+          (target) => target.updateReason === "version",
+        )
+          ? `${current} → ${countVersion(skill.version)}`
+          : current;
         const status =
           page === "sources"
             ? skill.status === "registered"
               ? "registered"
               : skill.status
-            : installed.length
-              ? "installed"
-              : "not installed";
+            : available.length
+              ? "↑ 有更新"
+              : installed.length
+                ? installed.some((target) => target.updateStatus === "unknown")
+                  ? "installed ?"
+                  : "installed"
+                : "not installed";
         return {
           id: skill.repo,
           name: skill.name ?? skill.repo,
-          detail: page === "sources" ? skill.repo : `${version} | ${status}`,
+          detail: page === "sources" ? skill.repo : `${status} | ${version}`,
           search: `${skill.name ?? ""} ${skill.repo} ${skill.description ?? ""}`,
           date: "",
           status,
@@ -518,7 +530,7 @@ class InteractiveApp {
       !(await this.confirm(
         "更新 Skill",
         [
-          ...rows.flatMap((row) => [row.name, row.id]),
+          ...rows.flatMap((row) => [row.name, row.id, row.version]),
           "更新所有已记录安装位置，覆盖本地修改。",
         ],
         "确认更新",
@@ -565,6 +577,17 @@ class InteractiveApp {
           "",
           ...(skill?.targets?.flatMap((target) => [
             `${target.installed ? "installed" : "not installed"} · ${countVersion(target.version)}`,
+            ...(target.installed
+              ? [
+                  target.updateStatus === "available"
+                    ? target.updateReason === "version"
+                      ? `↑ 有更新：${countVersion(target.version)} → ${countVersion(skill?.version)} · U Update`
+                      : "↑ 来源有更新 · U Update"
+                    : target.updateStatus === "unknown"
+                      ? "更新未确认，请刷新或核对来源"
+                      : "",
+                ]
+              : []),
             target.path,
             target.message ?? "",
             "",
@@ -602,13 +625,33 @@ class InteractiveApp {
       const controls = searching
         ? "Enter Apply | Backspace | Ctrl+U Clear | Esc Clear"
         : this.controls(page, state);
+      const updates =
+        page === "skill"
+          ? state.rows.filter((row) => row.status === "↑ 有更新").length
+          : 0;
       // Reserve one line for the query/error without displacing the key legend.
       const height = Math.max(
         1,
-        this.terminal.contentHeight(controls) - (state.notice ? 1 : 0),
+        this.terminal.contentHeight(controls) -
+          (state.notice ? 1 : 0) -
+          (updates ? 1 : 0),
       );
       const start = Math.floor(state.cursor / height) * height;
       const body: string[] = [];
+      if (updates) {
+        const action = " · U Update";
+        body.push(
+          " " +
+            color(
+              fit(
+                `↑ ${updates} 个 Skill 有更新`,
+                Math.max(1, this.terminal.width - stringWidth(action) - 2),
+              ),
+              "yellow",
+            ) +
+            color(action, "green"),
+        );
+      }
       if (state.notice)
         body.push(
           " " + color(fit(state.notice, this.terminal.width - 2), "red"),
@@ -625,7 +668,7 @@ class InteractiveApp {
                   : "暂无 Skill，按 M 管理来源。"),
         );
       const secondary = Math.min(
-        page === "sources" ? 58 : 34,
+        page === "sources" ? 58 : page === "skill" ? 50 : 34,
         Math.floor(this.terminal.width * 0.45),
       );
       const natural = Math.max(
@@ -638,13 +681,17 @@ class InteractiveApp {
       );
       for (const [offset, row] of rows.slice(start, start + height).entries()) {
         const index = start + offset;
-        const line = `${index === state.cursor ? "➤" : " "} ${state.selected.has(row.id) ? "●" : "○"} ${pad(row.name, primary)} ${fit(row.detail, secondary)}`;
+        const prefix = `${index === state.cursor ? "➤" : " "} ${state.selected.has(row.id) ? "●" : "○"} ${pad(row.name, primary)} `;
+        const detail = fit(row.detail, secondary);
+        const line = prefix + detail;
         body.push(
           index === state.cursor
             ? color(line, "cyan")
             : state.selected.has(row.id)
               ? color(line, "green")
-              : line,
+              : row.status === "↑ 有更新"
+                ? prefix + color(detail, "yellow")
+                : line,
         );
       }
       const filtering = searching || !!state.search;

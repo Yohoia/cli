@@ -9,6 +9,7 @@
 | 博客、设备授权与文章上传 | [远程博客管理规格](../.scratch/remote-blog-management/spec.md)                                                                |
 | Skill 来源、安装与更新   | [Codeup 来源切换](../.scratch/codeup-skill-source/spec.md)，其余行为见 [Skill 管理规格](../.scratch/skill-management/spec.md) |
 | Skill 卸载               | [卸载规格](../.scratch/skill-uninstall/spec.md)，包括保留来源登记和终端多选                                                   |
+| Skill 更新提示           | [更新提示规格](../.scratch/skill-update-notice/spec.md)，包括版本标识、逐目标检测和 Mole 风格提示                             |
 | 交互入口                 | [Mole 风格交互规格](../.scratch/mole-interactive/spec.md)                                                                     |
 | CLI 展示                 | [样式设计](../.scratch/cli-style/design.md)、[UI 迁移记录](../.scratch/cli-style/migration.md)                                |
 | npm 分发与环境诊断       | [分发规格](../.scratch/npm-distribution/spec.md)、[安装与发布指南](distribution.md)                                           |

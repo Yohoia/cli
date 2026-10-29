@@ -63,16 +63,35 @@ function installed(item: SkillItem): boolean {
     "targets" in item && !!item.targets?.some((target) => target.installed)
   );
 }
+function hasUpdate(item: SkillItem): boolean {
+  return (
+    "targets" in item &&
+    !!item.targets?.some((target) => target.updateStatus === "available")
+  );
+}
+function unconfirmed(item: SkillItem): boolean {
+  return (
+    "targets" in item &&
+    !!item.targets?.some(
+      (target) => target.installed && target.updateStatus === "unknown",
+    )
+  );
+}
 function listVersion(item: SkillItem): string {
   const current =
     "targets" in item
       ? (item.targets?.filter((target) => target.installed) ?? [])
       : [];
-  return current.length
+  const version = current.length
     ? [
         ...new Set(current.map((target) => declaredVersion(target.version))),
       ].join(" / ")
     : declaredVersion(item.version);
+  return hasUpdate(item) &&
+    "targets" in item &&
+    item.targets?.some((target) => target.updateReason === "version")
+    ? `${version} → ${declaredVersion(item.version)}`
+    : version;
 }
 function skillLocation(item: SkillItem): string {
   return "path" in item
@@ -227,6 +246,7 @@ export function SkillView({
       </>
     );
   const count = data.items.filter(installed).length;
+  const updates = data.items.filter(hasUpdate).length;
   const hint =
     data.operation === "sources"
       ? `Total: ${data.items.length}`
@@ -272,23 +292,29 @@ export function SkillView({
             },
             {
               heading: "Status",
-              maxWidth: 14,
+              maxWidth: 18,
               value: (item) =>
                 data.operation === "list"
-                  ? installed(item)
-                    ? "installed"
-                    : "not installed"
+                  ? hasUpdate(item)
+                    ? "↑ 有更新"
+                    : unconfirmed(item)
+                      ? "installed ?"
+                      : installed(item)
+                        ? "installed"
+                        : "not installed"
                   : skillStatuses[item.status],
               tone: (item) =>
                 data.operation === "list"
-                  ? installed(item)
-                    ? "success"
-                    : "subtle"
+                  ? hasUpdate(item)
+                    ? "warning"
+                    : installed(item)
+                      ? "success"
+                      : "subtle"
                   : skillTone(item),
             },
             {
               heading: "Version",
-              maxWidth: 24,
+              maxWidth: 42,
               value: (item) =>
                 data.operation === "list"
                   ? listVersion(item)
@@ -301,6 +327,14 @@ export function SkillView({
         <Note>暂无 Skill 条目</Note>
       )}
       <Note>{hint}</Note>
+      {data.operation === "list" && updates > 0 ? (
+        <Feedback variant="warning">
+          {`↑ ${updates} 个 Skill 有更新 · 运行 yoho skill update`}
+        </Feedback>
+      ) : null}
+      {data.operation === "list" && data.items.some(unconfirmed) ? (
+        <Note>installed ?：更新未确认，请核对来源或版本声明。</Note>
+      ) : null}
       {diagnosticMessages(data.items).length > 0 ? (
         <Diagnostics items={data.items} />
       ) : null}

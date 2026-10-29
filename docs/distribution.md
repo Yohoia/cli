@@ -17,7 +17,7 @@ yoho
 
 ```bash
 npx --registry=https://registry.npmjs.org/ --package=@yohoia/cli@latest yoho
-npm install --global @yohoia/cli@0.8.1 --registry=https://registry.npmjs.org/
+npm install --global @yohoia/cli@0.8.2 --registry=https://registry.npmjs.org/
 ```
 
 没有系统目录写权限时，优先使用 Node.js 版本管理器，或明确指定用户前缀：
@@ -47,13 +47,13 @@ npm uninstall --global @yohoia/cli
 
 ## GitHub Release 安装包
 
-从对应版本的 Release 下载 `yohoia-cli-<version>.tgz` 和 `SHA256SUMS`，在下载目录验证校验值后安装。例如 `v0.8.1`：
+从对应版本的 Release 下载 `yohoia-cli-<version>.tgz` 和 `SHA256SUMS`，在下载目录验证校验值后安装。例如 `v0.8.2`：
 
 ```bash
 # macOS
 shasum -a 256 -c SHA256SUMS
 # Linux 对应命令：sha256sum --check SHA256SUMS
-npm install --global ./yohoia-cli-0.8.1.tgz
+npm install --global ./yohoia-cli-0.8.2.tgz
 ```
 
 升级时下载新版本并安装其 tarball。安装包仍需要 Node.js；它不是独立可执行文件。当前完整验收目标为 macOS，Linux 和 Windows 的安装兼容性尚未宣称通过。
@@ -80,9 +80,9 @@ pnpm check
 pnpm format:check
 pnpm test:prepare
 pnpm test
-pnpm release:pack v0.8.1
-pnpm release:verify artifacts/release/yohoia-cli-0.8.1.tgz
-npm publish ./artifacts/release/yohoia-cli-0.8.1.tgz --dry-run --ignore-scripts --access public
+pnpm release:pack v0.8.2
+pnpm release:verify artifacts/release/yohoia-cli-0.8.2.tgz
+npm publish ./artifacts/release/yohoia-cli-0.8.2.tgz --dry-run --ignore-scripts --access public
 ```
 
 `release:pack` 校验包元数据和标签后重新构建，将发布文件复制到临时目录、统一文件权限，再使用 `npm pack --ignore-scripts` 创建最终 tarball，检查内容白名单并生成 `SHA256SUMS`。统一权限避免本地和 CI 的文件权限差异改变安装包校验值，不会改动源文件权限。标签省略时仅准备本地包；GitHub 标签运行会自动读取标签。脚本拒绝标签与 `package.json` 版本不一致的发布。
@@ -98,7 +98,7 @@ npm publish ./artifacts/release/yohoia-cli-0.8.1.tgz --dry-run --ignore-scripts 
 ```bash
 npm login
 npm whoami
-npm publish ./artifacts/release/yohoia-cli-0.8.1.tgz --access public --ignore-scripts
+npm publish ./artifacts/release/yohoia-cli-0.8.2.tgz --access public --ignore-scripts
 ```
 
 这一步会真实公开发布，不能用本地 dry-run 代替。账号登录、2FA 和首次发布由维护者完成；仓库不保存 npm Token。

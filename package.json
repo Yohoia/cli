@@ -1,6 +1,6 @@
 {
   "name": "@yohoia/cli",
-  "version": "0.8.1",
+  "version": "0.8.2",
   "description": "Manage PageHush articles and install, update, or remove Codeup Agent Skills",
   "license": "MIT",
   "author": "Yohoia",

@@ -20,6 +20,7 @@ src/
   skills/                   来源、安装、发现、更新、卸载与状态存储
     manifest.ts             SKILL.md 元数据解析
     installed-status.ts     目录占位及已安装状态
+    version.ts              Skill 声明版本的优先级比较
     install-selection.ts    安装交互
     update-selection.ts     更新交互
     uninstall-selection.ts  卸载交互

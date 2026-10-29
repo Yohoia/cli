@@ -87,10 +87,10 @@ test("skill lists show actual installation state and declared versions", async (
   assert.match(out.stdout, /installed/);
   assert.match(out.stdout, /not installed/);
   assert.match(out.stdout, /v0\.1\.1/);
-  assert.ok(
-    !out.stdout.includes("v0.1.2"),
-    "installed rows must show the installed version",
-  );
+  assert.match(out.stdout, /v0\.1\.1 → v0\.1\.2/);
+  assert.match(out.stdout, /↑ 有更新/);
+  assert.match(out.stdout, /1 个 Skill 有更新/);
+  assert.match(out.stdout, /yoho skill update/);
   assert.match(out.stdout, /Version/);
   assert.match(out.stdout, /Total: 3 · 1 installed · 2 not installed/);
   assert.ok(!out.stdout.includes("Skill 列表"), out.stdout);
@@ -147,6 +147,18 @@ test("update results contain only Skill, status and version headers and retain p
   } finally {
     await chmod(blocked, 0o755);
   }
+  const afterFailure = await f.command(["list"]);
+  const locations = afterFailure.data.items.find(
+    (item) => item.name === "speckit",
+  ).targets;
+  assert.equal(
+    locations.find((target) => target.path.startsWith(f.project)).updateStatus,
+    "available",
+  );
+  assert.equal(
+    locations.find((target) => target.path.startsWith(f.home)).updateStatus,
+    "current",
+  );
 });
 
 test("automatic updates reject a recorded parent redirected through a symlink", async (t) => {

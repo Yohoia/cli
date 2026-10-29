@@ -147,6 +147,53 @@ test("search uses Mole's yellow header and gray toolbar, with clear and apply in
     });
 });
 
+test("Skill update notices show Mole colors and versions, confirm updates and clear after success", async (t) => {
+  for (const columns of [120, 60])
+    await t.test(`${columns} columns`, async (t) => {
+      const f = await skillFixture(t);
+      const repo = "69aa892db28d0aba0f5ed47e/yoho-speckit";
+      const entry = (version) => ({
+        "SKILL.md": `---\nname: speckit\ndescription: Update notice\nversion: ${version}\n---\nSkill content\n`,
+      });
+      await f.repo(repo, "speckit", entry("1.0.0"));
+      await f.command(["install", "speckit", "--target", "agents"]);
+      await f.command([
+        "install",
+        "speckit",
+        "--scope",
+        "user",
+        "--target",
+        "codex",
+      ]);
+      await f.repo(repo, "speckit", entry("1.1.0"));
+      const result = await terminal(
+        { ...f.options, env: { ...f.options.env, NO_COLOR: undefined } },
+        ["skill"],
+        [
+          { wait: "0/3 selected", keys: "\r" },
+          { wait: "↑ 有更新：v1.0.0 → v1.1.0", keys: "u" },
+          { wait: "确认更新", keys: "\x1b[B\r" },
+          { wait: "Skill 操作结果", keys: "\r" },
+          { wait: "0/3 selected", keys: "\r" },
+          { wait: "Status: installed", keys: "q" },
+          { wait: "0/3 selected", keys: "q" },
+        ],
+        { columns, rows: 30 },
+      );
+      assert.match(result.terminal, /\x1b\[0;33m↑ 1 个 Skill 有更新\x1b\[0m/u);
+      assert.match(result.terminal, /\x1b\[0;32m · U Update\x1b\[0m/u);
+      const listed = await f.command(["list"]);
+      const skill = listed.data.items.find((item) => item.name === "speckit");
+      assert.equal(skill.targets.length, 2);
+      assert.ok(
+        skill.targets.every(
+          (target) =>
+            target.version === "1.1.0" && target.updateStatus === "current",
+        ),
+      );
+    });
+});
+
 test("Blog multi-select previews revisions, cancels by default, then deletes only confirmed articles", async (t) => {
   const api = await remoteFixture(t);
   const options = api.options(await api.device());

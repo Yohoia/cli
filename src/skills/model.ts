@@ -74,6 +74,8 @@ export type CatalogItem = {
     installed: boolean;
     occupied?: boolean;
     version?: string;
+    updateStatus?: "available" | "current" | "unknown";
+    updateReason?: "version" | "commit";
     message?: string;
   }[];
 } & (

@@ -56,7 +56,7 @@ Run the same install command to upgrade. The examples use the official npm regis
 npx --registry=https://registry.npmjs.org/ --package=@yohoia/cli@latest yoho
 
 # Pin a version
-npm install --global @yohoia/cli@0.8.1 --registry=https://registry.npmjs.org/
+npm install --global @yohoia/cli@0.8.2 --registry=https://registry.npmjs.org/
 
 # Remove the CLI while keeping configuration and installed Skills
 npm uninstall --global @yohoia/cli
@@ -73,7 +73,7 @@ If the global prefix is not writable, use `--prefix "$HOME/.local"` and add `$HO
 pnpm install --frozen-lockfile
 pnpm check
 pnpm release:pack
-npm install --global ./artifacts/release/yohoia-cli-0.8.1.tgz
+npm install --global ./artifacts/release/yohoia-cli-0.8.2.tgz
 yoho doctor
 ```
 
@@ -261,6 +261,8 @@ metadata:
 
 Top-level `version: "0.1.1"` is also supported and takes precedence when both fields exist. The terminal displays `v0.1.1`, or 未标注 when no version is declared. Installed rows show local versions; other rows show repository versions. Use `--target` to include installation paths.
 
+When a source declares a newer version, installed rows show yellow `↑ 有更新` and `v0.1.1 → v0.1.2`. The interactive Skill page shows an update count and green `U Update`; select a Skill and press `U` to review and confirm. Command mode suggests `yoho skill update`. Checking the list never changes installed Skill files. Installations without version declarations use their recorded source commits; unavailable sources and ambiguous manual copies remain unconfirmed. JSON targets expose `updateStatus` (`available`, `current`, or `unknown`) and, when available, `updateReason` (`version` or `commit`). The status describes source updates, while the update command also checks local file changes.
+
 </details>
 
 The CLI manages only Skills linked to registered sources or existing installation records. Manually copied Skills match registered names from root `SKILL.md` files. Unrelated third-party Skills without a match or record do not appear in the update menu, update-all results, or installation records. Previously managed installations retain recovery guidance when their source is removed.
@@ -283,7 +285,7 @@ yoho skill update speckit yoho-retro-poster --target claude --json
 yoho skill update --all --scope user --target agents --target codex --json
 ```
 
-Explicit `--scope`, `--target`, or `--project-path` options narrow an update to those locations. Without these options, updates use existing installation paths. They do not scan other projects for unrecorded installations or fill missing targets. Version labels are for display; updates still use the latest default-branch commit rather than sorting versions or selecting historical releases.
+Explicit `--scope`, `--target`, or `--project-path` options narrow an update to those locations. Without these options, updates use existing installation paths. They do not scan other projects for unrecorded installations or fill missing targets. Declared versions help identify available upgrades; updates still use the latest default-branch commit rather than selecting historical releases.
 
 Installation protects existing target directories and fills only missing targets. Each operation fixes the latest Codeup default-branch commit once per source, caches Git objects and fetches files on demand, copies the complete Skill tree without Git metadata, and never runs Skill scripts or installs npm/pip dependencies. Updates treat the repository as authoritative: local edits are overwritten, deleted repository files are restored, and local files absent from the repository are removed. Update failures recover the affected target and continue with other targets; initial batch-install failures roll back the new batch while preserving existing installations.
 

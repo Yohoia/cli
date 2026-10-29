@@ -283,7 +283,8 @@ test("installed skill tables retain source, installation state, failures and emp
   f.repos.get("69aa892db28d0aba0f5ed47e/yoho-speckit").status = 503;
   const unavailable = await terminal(["skill", "list"], f.options, 80);
   const unavailableRows = tableRows(unavailable, 80);
-  assert.equal(unavailableRows[1][2], "installed");
+  assert.equal(unavailableRows[1][2], "installed ?");
+  assert.match(unavailable, /更新未确认/);
   assert.match(unavailable, /Codeup Git 读取失败/);
   await f.command([
     "source",
